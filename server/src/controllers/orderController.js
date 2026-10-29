@@ -107,7 +107,7 @@ export const createOrder = asyncHandler(async (req, res) => {
       user: req.user._id,
       items,
       total,
-      shippingAddress,
+      shippingAddress: address,
       paymentMethod,
       paymentStatus: paymentMethod === "cashfree" ? "pending" : "not_required",
       status: paymentMethod === "cod" ? "processing" : "pending",

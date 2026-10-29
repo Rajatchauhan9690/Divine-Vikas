@@ -95,6 +95,18 @@ button {
   align-items: center;
   gap: 7px;
 }
+.cart-count {
+  display: inline-grid;
+  min-width: 19px;
+  height: 19px;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: 50%;
+  background: #123f32;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+}
 .nav svg {
   flex: 0 0 auto;
 }
@@ -988,6 +1000,15 @@ h1 em {
 }
 .detail-copy .stock.out {
   color: #b44b3f;
+}
+.cart-confirmation {
+  margin: 12px 0 0;
+  color: #39734c;
+  font-size: 13px;
+}
+.cart-confirmation a {
+  font-weight: 700;
+  text-decoration: underline;
 }
 .admin-heading {
   display: flex;
