@@ -13,7 +13,10 @@ import productRoutes from "./routes/productRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
 import profileRoutes from "./routes/profileRoutes.js";
-import { cashfreeWebhook } from "./controllers/orderController.js";
+import {
+  cashfreeWebhook,
+  shiprocketWebhook,
+} from "./controllers/orderController.js";
 import classSessionRoutes from "./routes/classSessionRoutes.js";
 import { notFound, errorHandler } from "./middleware/errors.js";
 const app = express();
@@ -61,6 +64,7 @@ app.post(
 app.use(express.json({ limit: "20kb" }));
 app.use(express.urlencoded({ extended: false, limit: "20kb" }));
 app.use(cookieParser());
+app.post("/api/courier-updates", shiprocketWebhook);
 if (env.nodeEnv !== "test")
   app.use(morgan(env.nodeEnv === "production" ? "combined" : "dev"));
 app.get("/health", (req, res) =>

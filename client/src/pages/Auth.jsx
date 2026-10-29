@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Flower2, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../features/auth/AuthContext";
 export default function Auth({ mode = "login" }) {
@@ -10,6 +10,7 @@ export default function Auth({ mode = "login" }) {
     [busy, setBusy] = useState(false);
   const { login, register } = useAuth();
   const nav = useNavigate();
+  const location = useLocation();
   const update = (e) => setForm({ ...form, [e.target.name]: e.target.value });
   async function submit(e) {
     e.preventDefault();
@@ -19,7 +20,13 @@ export default function Auth({ mode = "login" }) {
       const u = isLogin
         ? await login({ email: form.email, password: form.password })
         : await register(form);
-      nav(u.role === "admin" ? "/admin" : "/shop");
+      nav(
+        u.role === "admin"
+          ? "/admin"
+          : location.state?.from === "/cart"
+            ? "/cart"
+            : "/shop",
+      );
     } catch (err) {
       setError(
         err.response?.data?.message ||

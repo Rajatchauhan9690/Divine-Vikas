@@ -46,6 +46,7 @@ export const getProfile = asyncHandler(async (req, res) => {
       name: user.name,
       email: user.email,
       phone: user.phone,
+      whatsappOptIn: user.whatsappOptIn,
       addresses: user.addresses,
     },
   });
@@ -56,6 +57,8 @@ export const updateProfile = asyncHandler(async (req, res) => {
     allowed.name = req.body.name.trim().slice(0, 80);
   if (req.body.phone !== undefined)
     allowed.phone = String(req.body.phone).trim().slice(0, 20);
+  if (typeof req.body.whatsappOptIn === "boolean")
+    allowed.whatsappOptIn = req.body.whatsappOptIn;
   const user = await User.findByIdAndUpdate(
     req.user._id,
     { $set: allowed },
@@ -68,6 +71,7 @@ export const updateProfile = asyncHandler(async (req, res) => {
       name: user.name,
       email: user.email,
       phone: user.phone,
+      whatsappOptIn: user.whatsappOptIn,
       addresses: user.addresses,
     },
   });
@@ -75,8 +79,8 @@ export const updateProfile = asyncHandler(async (req, res) => {
 export const addAddress = asyncHandler(async (req, res) => {
   const address = cleanAddress(req.body);
   const user = await User.findById(req.user._id);
-  if (user.addresses.length >= 10)
-    throw new AppError("You can save up to 10 addresses", 400, "ADDRESS_LIMIT");
+  if (user.addresses.length >= 3)
+    throw new AppError("You can save up to 3 addresses", 400, "ADDRESS_LIMIT");
   address.isDefault =
     Boolean(req.body.isDefault) || user.addresses.length === 0;
   if (address.isDefault) user.addresses.forEach((a) => (a.isDefault = false));

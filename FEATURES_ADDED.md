@@ -27,4 +27,4 @@
 - Customer endpoints are authenticated and order reads/address changes are scoped to the owner.
 - Admin status/tracking endpoint requires admin role.
 - Cashfree orders cannot be manually marked paid via admin status updates.
-- See README for environment setup and limitations. Live courier location, refunds, notifications, and automatic expiry of abandoned checkouts require additional provider/business integrations.
+- See README for environment setup and limitations. Live courier location, refunds, and automatic expiry of abandoned checkouts require additional provider/business integrations.

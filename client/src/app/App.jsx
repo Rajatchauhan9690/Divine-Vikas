@@ -10,6 +10,7 @@ const Admin = lazy(() => import("../pages/Admin"));
 const ClassBookings = lazy(() => import("../pages/ClassBookings"));
 const Profile = lazy(() => import("../pages/Profile"));
 const Orders = lazy(() => import("../pages/Orders"));
+const Support = lazy(() => import("../pages/Support"));
 function Loading() {
   return <div className="loading-state">Loading Divine Vikas…</div>;
 }
@@ -25,9 +26,13 @@ export default function App() {
           <Route path="cart" element={<Cart />} />
           <Route path="profile" element={<Profile />} />
           <Route path="orders" element={<Orders />} />
+          <Route path="support" element={<Support />} />
           <Route path="login" element={<Auth mode="login" />} />
           <Route path="register" element={<Auth mode="register" />} />
           <Route path="admin" element={<Admin />} />
+          <Route path="admin/products" element={<Admin />} />
+          <Route path="admin/classes" element={<Admin />} />
+          <Route path="admin/orders" element={<Admin />} />
           <Route
             path="*"
             element={

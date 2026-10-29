@@ -7,8 +7,7 @@ import {
   Flower2,
   House,
   Store,
-  CalendarDays,
-  BookOpen,
+  // CalendarDays,
   ShieldCheck,
   Package,
   LogOut,
@@ -56,12 +55,11 @@ export default function Layout() {
             <NavLink to="/shop" onClick={closeMenu}>
               <Store size={16} /> Shop
             </NavLink>
+            {/*
             <NavLink to="/classes" onClick={closeMenu}>
               <CalendarDays size={16} /> Sessions
             </NavLink>
-            <Link to="/#story" onClick={closeMenu}>
-              <BookOpen size={16} /> Our-Story
-            </Link>
+            */}
             {user?.role === "admin" && (
               <NavLink to="/admin" onClick={closeMenu}>
                 <ShieldCheck size={16} /> Admin
@@ -114,6 +112,7 @@ export default function Layout() {
             </span>
           </div>
           <p>Luxury is a feeling. Devotion is the fragrance.</p>
+          <Link to="/support">Customer support</Link>
           <span>© {new Date().getFullYear()} Divine Vikas</span>
         </footer>
       )}

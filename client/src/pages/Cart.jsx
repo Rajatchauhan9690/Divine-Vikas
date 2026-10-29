@@ -45,7 +45,7 @@ function launchCashfree(sessionId, environment) {
   });
 }
 export default function Cart() {
-  const { items, remove, change, total, clear } = useCart();
+  const { items, remove, change, total } = useCart();
   const { user } = useAuth();
   const nav = useNavigate();
   const [message, setMessage] = useState("");
@@ -54,15 +54,21 @@ export default function Cart() {
   const [selected, setSelected] = useState("");
   const [address, setAddress] = useState(emptyAddress);
   const [newAddress, setNewAddress] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState("cashfree");
+  const [whatsappOptIn, setWhatsappOptIn] = useState(false);
+  const [savedWhatsappOptIn, setSavedWhatsappOptIn] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   useEffect(() => {
     if (user)
       api
         .get("/profile")
         .then((r) => {
           const a = r.data.profile.addresses || [];
+          const optedIn = Boolean(r.data.profile.whatsappOptIn);
           setAddresses(a);
           setSelected(a.find((x) => x.isDefault)?._id || a[0]?._id || "");
+          setWhatsappOptIn(optedIn);
+          setSavedWhatsappOptIn(optedIn);
+          setProfileLoaded(true);
           if (r.data.profile.name)
             setAddress((v) => ({
               ...v,
@@ -70,46 +76,63 @@ export default function Cart() {
               phone: r.data.profile.phone || "",
             }));
         })
-        .catch(() => {});
+        .catch((error) =>
+          setMessage(
+            error.response?.data?.message ||
+              "Could not load your profile. Refresh before continuing to checkout.",
+          ),
+        );
   }, [user]);
   function setField(k, v) {
     setAddress((a) => ({ ...a, [k]: v }));
   }
   async function checkout(e) {
     e.preventDefault();
-    if (!user) return nav("/login");
+    if (!user) return nav("/login", { state: { from: "/cart" } });
     if (!items.length) return;
+    if (!profileLoaded) {
+      setMessage(
+        "Your profile preference could not be loaded. Refresh before continuing to checkout.",
+      );
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
       let ship = addresses.find((a) => a._id === selected);
       if (newAddress || !ship) {
-        const { data } = await api.post("/profile/addresses", {
-          ...address,
-          isDefault: addresses.length === 0,
-        });
-        ship = data.addresses?.[data.addresses.length - 1];
-        setAddresses(data.addresses || []);
-        setSelected(ship?._id || "");
+        if (addresses.length < 3) {
+          const { data } = await api.post("/profile/addresses", {
+            ...address,
+            isDefault: addresses.length === 0,
+          });
+          ship = data.addresses?.[data.addresses.length - 1];
+          setAddresses(data.addresses || []);
+          setSelected(ship?._id || "");
+        } else {
+          ship = address;
+        }
       }
       if (!ship) throw new Error("Please select or enter a delivery address.");
+      if (whatsappOptIn !== savedWhatsappOptIn) {
+        await api.patch("/profile", { whatsappOptIn });
+        setSavedWhatsappOptIn(whatsappOptIn);
+      }
       const { data } = await api.post("/orders", {
         items: items.map((i) => ({ product: i._id, quantity: i.qty })),
         shippingAddress: ship,
-        paymentMethod,
+        paymentMethod: "cashfree",
       });
-      if (paymentMethod === "cashfree") {
-        if (!data.payment?.paymentSessionId)
-          throw new Error("Cashfree did not return a payment session.");
-        await launchCashfree(
-          data.payment.paymentSessionId,
-          data.payment.environment,
-        );
-        return;
-      }
-      clear?.();
-      setMessage("Order placed successfully. Pay on delivery.");
-      nav("/orders");
+      if (!data.payment?.paymentSessionId)
+        throw new Error("Cashfree did not return a payment session.");
+      setMessage(
+        "Your items are temporarily reserved while payment is pending.",
+      );
+      await launchCashfree(
+        data.payment.paymentSessionId,
+        data.payment.environment,
+      );
+      return;
     } catch (e) {
       setMessage(
         e.response?.data?.message ||
@@ -308,41 +331,27 @@ export default function Cart() {
               <strong>₹{total}</strong>
             </div>
             <h3 className="payment-heading">Payment method</h3>
-            <label className="payment-option">
-              <input
-                type="radio"
-                name="paymentMethod"
-                value="cashfree"
-                checked={paymentMethod === "cashfree"}
-                onChange={() => setPaymentMethod("cashfree")}
-              />
+            <div className="payment-option payment-option-fixed">
               <span>
                 <b>Pay online with Cashfree</b>
                 <small>UPI, cards and supported payment methods</small>
               </span>
-            </label>
-            <label className="payment-option">
+            </div>
+            <label className="whatsapp-opt-in">
               <input
-                type="radio"
-                name="paymentMethod"
-                value="cod"
-                checked={paymentMethod === "cod"}
-                onChange={() => setPaymentMethod("cod")}
+                type="checkbox"
+                checked={whatsappOptIn}
+                disabled={!profileLoaded || busy}
+                onChange={(event) => setWhatsappOptIn(event.target.checked)}
               />
-              <span>
-                <b>Cash on Delivery</b>
-                <small>Pay when your order arrives</small>
-              </span>
+              I agree to receive order and class booking updates on WhatsApp.
+              This is optional. Messages are sent only when WhatsApp Business
+              messaging is configured.
             </label>
             {message && <p className="notice error">{message}</p>}
             <button className="btn btn-dark btn-full" disabled={busy}>
-              {busy
-                ? "Processing…"
-                : paymentMethod === "cashfree"
-                  ? "Continue to secure payment"
-                  : "Place COD order"}
+              {busy ? "Processing…" : "Continue to secure payment"}
             </button>
-            <small>Prices are recalculated securely by the server.</small>
           </aside>
         </form>
       )}

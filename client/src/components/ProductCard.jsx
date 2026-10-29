@@ -2,8 +2,12 @@ import { memo } from "react";
 import { ShoppingBag, Star } from "lucide-react";
 import { useCart } from "../features/cart/CartContext";
 import { Link } from "react-router-dom";
-function ProductCard({ product }) {
+function ProductCard({ product, onAdd }) {
   const { add } = useCart();
+  function addToCart() {
+    add(product);
+    onAdd?.(product);
+  }
   return (
     <article className="product-card">
       <Link to={`/products/${product._id}`} className="product-image">
@@ -31,7 +35,7 @@ function ProductCard({ product }) {
         <button
           className="btn btn-dark btn-full"
           disabled={product.stock === 0}
-          onClick={() => add(product)}
+          onClick={addToCart}
         >
           <ShoppingBag size={16} />
           {product.stock === 0 ? "Sold out" : "Add to bag"}

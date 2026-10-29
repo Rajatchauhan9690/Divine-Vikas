@@ -44,6 +44,13 @@ export default function Product() {
             p.shortDescription ||
             "A thoughtful fragrance made to bring a little beauty to your everyday ritual."}
         </p>
+        <p className="product-return-policy">
+          {p.returnable === false || !p.returnWindowDays
+            ? "This product is non-returnable."
+            : `Return requests are accepted within ${p.returnWindowDays} ${
+                p.returnWindowDays === 1 ? "day" : "days"
+              } after delivery. For multi-item orders, all items must still be within their return windows.`}
+        </p>
         <div className="detail-benefits">
           <span>
             <Leaf /> Thoughtfully selected ingredients

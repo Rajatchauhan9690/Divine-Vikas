@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
+import AdminToast from "../components/AdminToast";
 const empty = {
   label: "Home",
   fullName: "",
@@ -20,11 +21,15 @@ export default function Profile() {
   const [profile, setProfile] = useState(null),
     [form, setForm] = useState(empty),
     [editing, setEditing] = useState(""),
+    [addressFormOpen, setAddressFormOpen] = useState(false),
+    [addressToDelete, setAddressToDelete] = useState(null),
     [name, setName] = useState(""),
     [phone, setPhone] = useState(""),
-    [notice, setNotice] = useState(""),
-    [error, setError] = useState(""),
+    [toast, setToast] = useState(null),
     [busy, setBusy] = useState(false);
+  function showToast(type, text) {
+    setToast({ type, text });
+  }
   async function load() {
     const r = await api.get("/profile");
     setProfile(r.data.profile);
@@ -34,9 +39,20 @@ export default function Profile() {
   useEffect(() => {
     if (user)
       load().catch((e) =>
-        setError(e.response?.data?.message || "Unable to load profile"),
+        showToast(
+          "error",
+          e.response?.data?.message || "Unable to load profile",
+        ),
       );
   }, [user]);
+  useEffect(() => {
+    if (!addressToDelete) return;
+    function handleKeyDown(event) {
+      if (event.key === "Escape" && !busy) setAddressToDelete(null);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [addressToDelete, busy]);
   if (!ready) return <div className="loading-state">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
   function change(k, v) {
@@ -48,10 +64,27 @@ export default function Profile() {
     try {
       await api.patch("/profile", { name, phone });
       await load();
-      setNotice("Profile updated.");
-      setError("");
+      showToast("success", "Profile updated.");
     } catch (e) {
-      setError(e.response?.data?.message || "Could not update profile");
+      showToast("error", e.response?.data?.message || "Could not update profile");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function setWhatsAppUpdates(enabled) {
+    setBusy(true);
+    try {
+      await api.patch("/profile", { whatsappOptIn: enabled });
+      await load();
+      showToast(
+        "success",
+        `WhatsApp updates turned ${enabled ? "on" : "off"}.`,
+      );
+    } catch (e) {
+      showToast(
+        "error",
+        e.response?.data?.message || "Could not update WhatsApp preference",
+      );
     } finally {
       setBusy(false);
     }
@@ -65,44 +98,53 @@ export default function Profile() {
       await load();
       setForm(empty);
       setEditing("");
-      setNotice("Address saved.");
-      setError("");
+      setAddressFormOpen(false);
+      showToast("success", "Address saved.");
     } catch (e) {
-      setError(e.response?.data?.message || "Could not save address");
+      showToast("error", e.response?.data?.message || "Could not save address");
     } finally {
       setBusy(false);
     }
   }
-  async function remove(id) {
-    if (!confirm("Delete this saved address?")) return;
+  async function removeAddress() {
+    if (!addressToDelete) return;
+    setBusy(true);
     try {
-      await api.delete(`/profile/addresses/${id}`);
+      await api.delete(`/profile/addresses/${addressToDelete._id}`);
       await load();
+      setAddressToDelete(null);
+      showToast("success", "Address deleted.");
     } catch (e) {
-      setError(e.response?.data?.message || "Could not delete address");
+      showToast("error", e.response?.data?.message || "Could not delete address");
+    } finally {
+      setBusy(false);
     }
   }
   async function makeDefault(id) {
     try {
       await api.post(`/profile/addresses/${id}/default`);
       await load();
+      showToast("success", "Default address updated.");
     } catch (e) {
-      setError(e.response?.data?.message || "Could not set default address");
+      showToast(
+        "error",
+        e.response?.data?.message || "Could not set default address",
+      );
     }
   }
   function edit(a) {
     setEditing(a._id);
     setForm({ ...empty, ...a });
+    setAddressFormOpen(true);
     window.scrollTo({ top: 500, behavior: "smooth" });
   }
   return (
     <section className="section account-page">
+      <AdminToast toast={toast} onDismiss={() => setToast(null)} />
       <span className="eyebrow">YOUR ACCOUNT</span>
       <h1 className="account-title">
         My <em>profile.</em>
       </h1>
-      {notice && <p className="notice">{notice}</p>}
-      {error && <p className="notice error">{error}</p>}
       <div className="account-grid">
         <form className="account-card" onSubmit={saveProfile}>
           <h2>Personal details</h2>
@@ -127,6 +169,23 @@ export default function Profile() {
               onChange={(e) => setPhone(e.target.value)}
             />
           </label>
+          <div className="whatsapp-opt-in">
+            <span>
+              WhatsApp order and class updates:{" "}
+              <b>{profile?.whatsappOptIn ? "On" : "Off"}</b>. You can change
+              this preference here or during checkout.
+            </span>
+            <button
+              type="button"
+              className="text-link"
+              disabled={busy}
+              onClick={() =>
+                setWhatsAppUpdates(!profile?.whatsappOptIn)
+              }
+            >
+              Turn {profile?.whatsappOptIn ? "off" : "on"} WhatsApp updates
+            </button>
+          </div>
           <button className="btn btn-dark" disabled={busy}>
             Save profile
           </button>
@@ -134,7 +193,7 @@ export default function Profile() {
         <div className="account-card">
           <div className="account-card-heading">
             <h2>Saved addresses</h2>
-            <span>{profile?.addresses?.length || 0}/10</span>
+            <span>{profile?.addresses?.length || 0}/3</span>
           </div>
           {profile?.addresses?.length ? (
             profile.addresses.map((a) => (
@@ -157,7 +216,9 @@ export default function Profile() {
                 </div>
                 <div className="address-actions">
                   <button onClick={() => edit(a)}>Edit</button>
-                  <button onClick={() => remove(a._id)}>Delete</button>
+                  <button type="button" onClick={() => setAddressToDelete(a)}>
+                    Delete
+                  </button>
                   {!a.isDefault && (
                     <button onClick={() => makeDefault(a._id)}>
                       Make default
@@ -167,10 +228,35 @@ export default function Profile() {
               </article>
             ))
           ) : (
-            <p>No saved addresses yet. Add one below.</p>
+            <p>No saved addresses yet.</p>
+          )}
+          <button
+            type="button"
+            className="btn btn-outline"
+            disabled={
+              busy ||
+              (!addressFormOpen && !editing && (profile?.addresses?.length || 0) >= 3)
+            }
+            onClick={() => {
+              if (addressFormOpen) {
+                setEditing("");
+                setForm(empty);
+                setAddressFormOpen(false);
+              } else {
+                setEditing("");
+                setForm(empty);
+                setAddressFormOpen(true);
+              }
+            }}
+          >
+            {addressFormOpen ? "Close address form" : "Add a delivery address"}
+          </button>
+          {(profile?.addresses?.length || 0) >= 3 && (
+            <p>You can save up to 3 delivery addresses. Delete one to add another.</p>
           )}
         </div>
       </div>
+      {addressFormOpen && (
       <form className="account-card address-form" onSubmit={saveAddress}>
         <h2>{editing ? "Edit address" : "Add a delivery address"}</h2>
         <div className="account-form-grid">
@@ -266,20 +352,57 @@ export default function Profile() {
           <button className="btn btn-dark" disabled={busy}>
             {busy ? "Saving…" : editing ? "Update address" : "Save address"}
           </button>
-          {editing && (
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={() => {
-                setEditing("");
-                setForm(empty);
-              }}
-            >
-              Cancel edit
-            </button>
-          )}
+          <button
+            type="button"
+            className="btn btn-outline"
+            disabled={busy}
+            onClick={() => {
+              setEditing("");
+              setForm(empty);
+              setAddressFormOpen(false);
+            }}
+          >
+            Cancel
+          </button>
         </div>
       </form>
+      )}
+      {addressToDelete && (
+        <div className="confirm-overlay">
+          <div
+            className="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-address-title"
+            aria-describedby="delete-address-description"
+          >
+            <h2 id="delete-address-title">Delete saved address?</h2>
+            <p id="delete-address-description">
+              Delete the {addressToDelete.label || "saved"} address for{" "}
+              {addressToDelete.fullName}? This cannot be undone.
+            </p>
+            <div className="inline-actions">
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={busy}
+                autoFocus
+                onClick={() => setAddressToDelete(null)}
+              >
+                Keep address
+              </button>
+              <button
+                type="button"
+                className="btn btn-dark"
+                disabled={busy}
+                onClick={removeAddress}
+              >
+                {busy ? "Deleting…" : "Delete address"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -1,15 +1,54 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
+import { useCart } from "../features/cart/CartContext";
 const stages = ["pending", "paid", "processing", "shipped", "delivered"];
+const cancellationWindowMs = 6 * 60 * 60 * 1000;
+function getOrderReturnWindowDays(order) {
+  if (
+    !order.items?.length ||
+    order.items.some(
+      (item) =>
+        item.returnable === false ||
+        !Number.isInteger(item.returnWindowDays) ||
+        item.returnWindowDays < 1,
+    )
+  )
+    return null;
+  return Math.min(
+    ...order.items.map((item) => item.returnWindowDays),
+  );
+}
+const emptyAddress = {
+  label: "Home",
+  fullName: "",
+  phone: "",
+  line1: "",
+  line2: "",
+  city: "",
+  state: "",
+  postalCode: "",
+  country: "India",
+  landmark: "",
+};
 export default function Orders() {
   const { user, ready } = useAuth();
+  const { items: cartItems, remove } = useCart();
   const [orders, setOrders] = useState([]),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState("");
+  const [now, setNow] = useState(Date.now());
   const [params] = useSearchParams();
+  const verifiedPaymentReturn = useRef("");
+  const [addressChangeOrderId, setAddressChangeOrderId] = useState("");
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [selectedAddressId, setSelectedAddressId] = useState("");
+  const [addressMode, setAddressMode] = useState("saved");
+  const [newAddress, setNewAddress] = useState(emptyAddress);
+  const [returnReason, setReturnReason] = useState("");
+  const [returnOrderId, setReturnOrderId] = useState("");
   async function load() {
     const r = await api.get("/orders/mine");
     setOrders(r.data.orders);
@@ -21,12 +60,45 @@ export default function Orders() {
       );
   }, [user]);
   useEffect(() => {
-    if (user && params.get("payment") === "return" && params.get("order_id"))
+    const timer = window.setInterval(() => setNow(Date.now()), 10000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    const attemptId = params.get("order_id");
+    const verificationKey = `${user?.id || ""}:${attemptId || ""}`;
+    if (
+      user &&
+      params.get("payment") === "return" &&
+      attemptId &&
+      verifiedPaymentReturn.current !== verificationKey
+    ) {
+      verifiedPaymentReturn.current = verificationKey;
       api
-        .post(`/orders/${params.get("order_id")}/verify-payment`)
-        .then(() => {
-          setNotice("Payment status refreshed.");
-          load();
+        .post(`/orders/${attemptId}/verify-payment`)
+        .then(async ({ data }) => {
+          if (data.paymentStatus === "paid" && data.order) {
+            setNotice("Payment successful. Your order has been placed.");
+            for (const item of data.order.items || [])
+              if (cartItems.some((cartItem) => cartItem._id === item.product))
+                remove(String(item.product));
+          } else if (data.paymentStatus === "failed") {
+            setNotice(
+              "Payment failed. No order was placed and reserved stock was released.",
+            );
+          } else if (data.paymentStatus === "expired") {
+            setNotice(
+              "The payment window expired. No order was placed; please start checkout again.",
+            );
+          } else if (data.paymentStatus === "refund_required") {
+            setError(
+              "Payment succeeded after stock was released, but the items are no longer available. Please contact support to arrange a refund.",
+            );
+          } else {
+            setNotice(
+              "Payment is still being confirmed. No order will appear until Cashfree confirms it.",
+            );
+          }
+          await load();
         })
         .catch((e) =>
           setError(
@@ -34,31 +106,72 @@ export default function Orders() {
               "Payment status is still being confirmed",
           ),
         );
-  }, [user, params]);
+    }
+  }, [cartItems, load, params, remove, user]);
   if (!ready) return <div className="loading-state">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
   async function changeAddress(order) {
-    const profile = (await api.get("/profile")).data.profile;
-    const list = profile.addresses || [];
-    if (!list.length) {
-      setError("Add a saved address in My profile first.");
+    setError("");
+    setAddressChangeOrderId(order._id);
+    setBusy(order._id);
+    try {
+      const { data } = await api.get("/profile");
+      const list = data.profile.addresses || [];
+      if (!list.length) {
+        setAddressMode("new");
+      } else {
+        setAddressMode("saved");
+      }
+      setSavedAddresses(list);
+      setSelectedAddressId(
+        list.find((address) => address.isDefault)?._id || list[0]?._id || "",
+      );
+      setNewAddress({
+        ...emptyAddress,
+        fullName: order.shippingAddress?.fullName || user.name || "",
+        phone: order.shippingAddress?.phone || user.phone || "",
+        country: order.shippingAddress?.country || "India",
+      });
+    } catch (e) {
+      setAddressChangeOrderId("");
+      setError(e.response?.data?.message || "Could not load saved addresses.");
+    } finally {
+      setBusy("");
+    }
+  }
+  async function saveAddressChange(order) {
+    const selectedAddress = savedAddresses.find(
+      (address) => address._id === selectedAddressId,
+    );
+    const shippingAddress =
+      addressMode === "saved" ? selectedAddress : newAddress;
+    if (!shippingAddress) {
+      setError("Choose a saved address or enter a new delivery address.");
       return;
     }
-    const choice = window.prompt(
-      "Choose a saved address number:\n" +
-        list
-          .map((a, i) => `${i + 1}. ${a.label}: ${a.line1}, ${a.city}`)
-          .join("\n"),
-      String(Math.max(1, list.findIndex((a) => a.isDefault) + 1)),
-    );
-    const index = Number(choice) - 1;
-    if (!Number.isInteger(index) || index < 0 || index >= list.length) return;
+    if (
+      addressMode === "new" &&
+      (!shippingAddress.fullName.trim() ||
+        !shippingAddress.phone.trim() ||
+        !shippingAddress.line1.trim() ||
+        !shippingAddress.city.trim() ||
+        !shippingAddress.state.trim() ||
+        !shippingAddress.postalCode.trim() ||
+        !/^\+?[0-9 ()-]{8,20}$/.test(shippingAddress.phone))
+    ) {
+      setError(
+        "Enter a valid name, phone, street address, city, state, and postal code.",
+      );
+      return;
+    }
+    setError("");
     setBusy(order._id);
     try {
       await api.patch(`/orders/${order._id}/address`, {
-        shippingAddress: list[index],
+        shippingAddress,
       });
       setNotice("Delivery address updated.");
+      setAddressChangeOrderId("");
       await load();
     } catch (e) {
       setError(
@@ -68,6 +181,55 @@ export default function Orders() {
       setBusy("");
     }
   }
+  async function cancelOrder(order) {
+    const paidOnline =
+      order.paymentMethod === "cashfree" && order.paymentStatus === "paid";
+    if (
+      !window.confirm(
+        paidOnline
+          ? `Cancel paid order #${String(order._id).slice(-8).toUpperCase()}? The order will be cancelled and reserved stock restored, but the Cashfree refund will need to be handled manually.`
+          : `Cancel order #${String(order._id).slice(-8).toUpperCase()}? Reserved stock will be restored.`,
+      )
+    )
+      return;
+    setBusy(order._id);
+    setError("");
+    try {
+      await api.post(`/orders/${order._id}/cancel`);
+      setNotice(
+        paidOnline
+          ? "Order cancelled and stock restored. Contact support to arrange the Cashfree refund."
+          : "Order cancelled. Reserved product stock has been restored.",
+      );
+    } catch (e) {
+      setError(e.response?.data?.message || "Could not cancel this order.");
+      setBusy("");
+      return;
+    }
+    async function requestReturn(order) {
+      setError("");
+      setBusy(order._id);
+      try {
+        await api.post(`/orders/${order._id}/return`, {
+          reason: returnReason,
+        });
+        setReturnOrderId("");
+        setReturnReason("");
+        setNotice("Return request submitted. The Admin will review it.");
+        await load();
+      } catch (e) {
+        setError(e.response?.data?.message || "Could not request a return.");
+      } finally {
+        setBusy("");
+      }
+    }
+    try {
+      await load();
+    } catch {
+      setError("Order cancelled, but the order list could not be refreshed.");
+    }
+    setBusy("");
+  }
   return (
     <section className="section orders-page">
       <span className="eyebrow">YOUR PURCHASES</span>
@@ -76,6 +238,10 @@ export default function Orders() {
       </h1>
       <p className="account-intro">
         Track each order, review its delivery address and check payment status.
+      </p>
+      <p className="orders-support-link">
+        Need help with an order?{" "}
+        <Link to="/support">Contact customer support</Link>.
       </p>
       {notice && <p className="notice">{notice}</p>}
       {error && <p className="notice error">{error}</p>}
@@ -106,7 +272,21 @@ export default function Orders() {
                 {o.items.map((i, n) => (
                   <div key={`${i.product}-${n}`}>
                     <span>
-                      {i.name} × {i.quantity}
+                      <span>
+                        {i.name} × {i.quantity}
+                      </span>
+                      <small>
+                        {i.returnable === false
+                            ? "Non-returnable"
+                            : Number.isInteger(i.returnWindowDays) &&
+                                i.returnWindowDays > 0
+                            ? `Return window: ${i.returnWindowDays} ${
+                              i.returnWindowDays === 1
+                                ? "day"
+                                : "days"
+                              } after delivery`
+                            : "Non-returnable (no return window saved)"}
+                      </small>
                     </span>
                     <b>₹{i.price * i.quantity}</b>
                   </div>
@@ -122,7 +302,7 @@ export default function Orders() {
                   <b>
                     {o.paymentMethod === "cashfree"
                       ? "Cashfree online"
-                      : "Cash on Delivery"}{" "}
+                      : "Cash on Delivery (legacy order)"}{" "}
                     · {o.paymentStatus}
                   </b>
                 </div>
@@ -152,6 +332,95 @@ export default function Orders() {
                       Track shipment
                     </a>
                   )}
+                  {o.returnRequest?.status &&
+                    o.returnRequest.status !== "none" && (
+                      <div className="order-return-status">
+                        <b>
+                          Return: {o.returnRequest.status.replaceAll("_", " ")}
+                        </b>
+                        <p>{o.returnRequest.reason}</p>
+                        {o.refund?.status &&
+                          o.refund.status !== "not_requested" && (
+                            <small>Cashfree refund: {o.refund.status}</small>
+                          )}
+                      </div>
+                    )}
+                  {o.status === "delivered" &&
+                    o.deliveredAt &&
+                    (!o.returnRequest || o.returnRequest.status === "none") &&
+                    getOrderReturnWindowDays(o) === null && (
+                      <p className="order-return-status">
+                        This order contains a non-returnable product and cannot
+                        be returned.
+                      </p>
+                    )}
+                  {o.status === "delivered" &&
+                    o.deliveredAt &&
+                    (!o.returnRequest || o.returnRequest.status === "none") &&
+                    getOrderReturnWindowDays(o) !== null &&
+                    now <=
+                      new Date(o.deliveredAt).getTime() +
+                        getOrderReturnWindowDays(o) *
+                          24 *
+                          60 *
+                          60 *
+                          1000 && (
+                      <div className="order-return-action">
+                        {returnOrderId === o._id ? (
+                          <>
+                            <label>
+                              Why are you returning this order?
+                              <textarea
+                                maxLength="500"
+                                value={returnReason}
+                                onChange={(event) =>
+                                  setReturnReason(event.target.value)
+                                }
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              className="btn btn-dark"
+                              disabled={busy === o._id || !returnReason.trim()}
+                              onClick={() => requestReturn(o)}
+                            >
+                              {busy === o._id
+                                ? "Submitting…"
+                                : "Submit return request"}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-outline"
+                              disabled={busy === o._id}
+                              onClick={() => setReturnOrderId("")}
+                            >
+                              Keep order
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-outline"
+                              onClick={() => setReturnOrderId(o._id)}
+                            >
+                              Request a return
+                            </button>
+                            <small>
+                              Request within{" "}
+                              {getOrderReturnWindowDays(o)}{" "}
+                              {getOrderReturnWindowDays(o) === 1
+                                ? "day"
+                                : "days"}{" "}
+                              of delivery. This order has different product
+                              return windows; all items must still be eligible.
+                              Refund is processed after returned items are
+                              received.
+                            </small>
+                          </>
+                        )}
+                      </div>
+                    )}
                 </div>
               )}
               <div className="timeline">
@@ -160,9 +429,11 @@ export default function Orders() {
                   : [{ status: o.status, at: o.updatedAt }]
                 ).map((h, i) => (
                   <div className="timeline-item" key={`${h.status}-${i}`}>
-                    <i />
                     <div>
-                      <b>{h.status}</b>
+                      <div className="timeline-item-heading">
+                        <i />
+                        <b>{h.status}</b>
+                      </div>
                       <p>{h.note || ""}</p>
                       <small>{new Date(h.at).toLocaleString()}</small>
                     </div>
@@ -171,14 +442,202 @@ export default function Orders() {
               </div>
               {["pending", "paid", "processing"].includes(o.status) &&
                 o.addressChangeAllowed && (
-                  <button
-                    className="btn btn-outline"
-                    disabled={busy === o._id}
-                    onClick={() => changeAddress(o)}
-                  >
-                    {busy === o._id ? "Updating…" : "Change delivery address"}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      disabled={busy === o._id}
+                      onClick={() =>
+                        addressChangeOrderId === o._id
+                          ? setAddressChangeOrderId("")
+                          : changeAddress(o)
+                      }
+                    >
+                      {busy === o._id
+                        ? "Loading addresses…"
+                        : addressChangeOrderId === o._id
+                          ? "Close address selector"
+                          : "Change delivery address"}
+                    </button>
+                    {addressChangeOrderId === o._id && (
+                      <div className="order-address-editor">
+                        <div className="order-previous-address">
+                          <b>Current delivery address</b>
+                          <span>
+                            {o.shippingAddress?.fullName},{" "}
+                            {o.shippingAddress?.line1}
+                            {o.shippingAddress?.line2
+                              ? `, ${o.shippingAddress.line2}`
+                              : ""}
+                            , {o.shippingAddress?.city},{" "}
+                            {o.shippingAddress?.state}{" "}
+                            {o.shippingAddress?.postalCode}
+                          </span>
+                        </div>
+                        {savedAddresses.length > 0 && (
+                          <div className="order-address-modes">
+                            <button
+                              type="button"
+                              className={`btn ${addressMode === "saved" ? "btn-dark" : "btn-outline"}`}
+                              onClick={() => setAddressMode("saved")}
+                            >
+                              Use saved address
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn ${addressMode === "new" ? "btn-dark" : "btn-outline"}`}
+                              onClick={() => setAddressMode("new")}
+                            >
+                              Enter new address
+                            </button>
+                          </div>
+                        )}
+                        {addressMode === "saved" &&
+                        savedAddresses.length > 0 ? (
+                          <>
+                            <label htmlFor={`address-${o._id}`}>
+                              Choose a saved delivery address
+                            </label>
+                            <select
+                              id={`address-${o._id}`}
+                              value={selectedAddressId}
+                              onChange={(event) =>
+                                setSelectedAddressId(event.target.value)
+                              }
+                            >
+                              {savedAddresses.map((address) => (
+                                <option key={address._id} value={address._id}>
+                                  {address.label || "Address"} — {address.line1}
+                                  , {address.city}
+                                  {address.isDefault ? " (Default)" : ""}
+                                </option>
+                              ))}
+                            </select>
+                            <div className="order-address-preview">
+                              {
+                                savedAddresses.find(
+                                  (address) =>
+                                    address._id === selectedAddressId,
+                                )?.fullName
+                              }
+                              {", "}
+                              {
+                                savedAddresses.find(
+                                  (address) =>
+                                    address._id === selectedAddressId,
+                                )?.line1
+                              }
+                              {", "}
+                              {
+                                savedAddresses.find(
+                                  (address) =>
+                                    address._id === selectedAddressId,
+                                )?.city
+                              }
+                            </div>
+                          </>
+                        ) : (
+                          <div className="order-new-address-fields">
+                            {[
+                              ["fullName", "Full name", true],
+                              ["phone", "Phone number", true],
+                              ["line1", "Address line 1", true],
+                              ["line2", "Address line 2", false],
+                              ["city", "City", true],
+                              ["state", "State", true],
+                              ["postalCode", "Postal code", true],
+                              ["country", "Country", true],
+                              ["landmark", "Landmark", false],
+                            ].map(([field, label, required]) => (
+                              <label key={field}>
+                                {label}
+                                <input
+                                  required={required}
+                                  value={newAddress[field]}
+                                  onChange={(event) =>
+                                    setNewAddress((current) => ({
+                                      ...current,
+                                      [field]: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        <div className="order-address-actions">
+                          <button
+                            type="button"
+                            className="btn btn-dark"
+                            disabled={
+                              busy === o._id ||
+                              (addressMode === "saved" && !selectedAddressId)
+                            }
+                            onClick={() => saveAddressChange(o)}
+                          >
+                            {busy === o._id ? "Saving…" : "Save address"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            disabled={busy === o._id}
+                            onClick={() => setAddressChangeOrderId("")}
+                          >
+                            Keep current address
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
+              {["pending", "paid", "processing"].includes(o.status) && (
+                <>
+                  {(() => {
+                    const cancellationExpired =
+                      now - new Date(o.createdAt).getTime() >=
+                      cancellationWindowMs;
+                    const paidOnline =
+                      o.paymentMethod === "cashfree" &&
+                      o.paymentStatus === "paid";
+                    return (
+                      <div className="order-cancel-action">
+                        <button
+                          type="button"
+                          className="btn btn-danger"
+                          disabled={busy === o._id || cancellationExpired}
+                          title={
+                            paidOnline
+                              ? "You can cancel within 6 hours; any Cashfree refund must be handled manually."
+                              : cancellationExpired
+                                ? "The 6-hour cancellation window has ended."
+                                : undefined
+                          }
+                          onClick={() => cancelOrder(o)}
+                        >
+                          {busy === o._id
+                            ? "Cancelling…"
+                            : cancellationExpired
+                              ? "Cancellation window closed"
+                              : "Cancel order"}
+                        </button>
+                        {paidOnline && !cancellationExpired && (
+                          <small>
+                            You can cancel this order within 6 hours. Cashfree
+                            refunds are handled manually; contact support after
+                            cancelling.
+                          </small>
+                        )}
+                        {!paidOnline && cancellationExpired && (
+                          <small>
+                            Customer cancellation is available only within 6
+                            hours of placing the order.
+                          </small>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
             </article>
           ))}
         </div>
