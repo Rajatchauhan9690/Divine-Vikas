@@ -15,9 +15,11 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "../features/auth/AuthContext";
+import { useCart } from "../features/cart/CartContext";
 export default function Layout() {
   const [open, setOpen] = useState(false);
   const { user, logout } = useAuth();
+  const { count } = useCart();
   const { pathname, hash } = useLocation();
   const isAuthPage = pathname === "/login" || pathname === "/register";
   useEffect(() => {
@@ -67,6 +69,11 @@ export default function Layout() {
             )}
             <Link to="/cart" className="cart-link" onClick={closeMenu}>
               <ShoppingBag size={16} /> Cart
+              {count > 0 && (
+                <span className="cart-count" aria-label={`${count} items`}>
+                  {count}
+                </span>
+              )}
             </Link>
             {user && (
               <>

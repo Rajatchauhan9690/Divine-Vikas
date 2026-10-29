@@ -19,7 +19,7 @@ Node.js 20+, MongoDB 7+ (local or Atlas).
 5. Open the Vite URL. API defaults to `http://localhost:5000/api`.
 
 The seed command creates an admin using `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` from `.env`. Change these before running it.
-Uploaded product images are served by the API. For a deployed API, set `IMAGE_ORIGINS` in `server/.env` to a comma-separated list of trusted image-serving origins; local development allows `localhost` and `127.0.0.1` on the configured API port.
+New product image uploads use Cloudinary and are served from secure Cloudinary URLs. Set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in `server/.env` from your Cloudinary dashboard; keep these credentials on the server and never add them to the client environment. Existing images under `/uploads` remain available. If you use another image host, add its origin to the comma-separated `IMAGE_ORIGINS` setting.
 
 ## Security notes
 - Cookie-backed authentication mutations (`register`, `login`, `refresh`, `logout`, `logout-all`) require a CSRF token. The client bootstraps it from `GET /api/auth/csrf`, sends it in `X-CSRF-Token`, and the server validates the header against the CSRF cookie using a timing-safe comparison. The server also rejects a mismatched browser `Origin`.

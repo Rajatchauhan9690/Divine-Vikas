@@ -217,7 +217,7 @@ export default function Admin() {
           </label>
           <label className="wide">
             Description
-            <textarea
+            <input
               required
               maxLength="3000"
               value={form.description}

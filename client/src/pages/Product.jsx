@@ -6,9 +6,11 @@ import { useCart } from "../features/cart/CartContext";
 export default function Product() {
   const { id } = useParams();
   const [p, setP] = useState(null),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [added, setAdded] = useState(false);
   const { add } = useCart();
   useEffect(() => {
+    setAdded(false);
     api
       .get(`/products/${id}`)
       .then((r) => setP(r.data.product))
@@ -58,10 +60,18 @@ export default function Product() {
         <button
           className="btn btn-dark btn-full"
           disabled={!p.stock}
-          onClick={() => add(p)}
+          onClick={() => {
+            add(p);
+            setAdded(true);
+          }}
         >
           <ShoppingBag size={17} /> Add to bag — ₹{p.price}
         </button>
+        {added && (
+          <p className="cart-confirmation" role="status">
+            Added to your bag. <Link to="/cart">View bag</Link>
+          </p>
+        )}
       </div>
     </section>
   );

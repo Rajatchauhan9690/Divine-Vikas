@@ -1,7 +1,10 @@
 import Product from "../models/Product.js";
-import { unlink } from "node:fs/promises";
 import AppError from "../utils/AppError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import {
+  deleteCloudinaryImage,
+  uploadProductImage,
+} from "../services/cloudinaryService.js";
 export const listProducts = asyncHandler(async (req, res) => {
   const { search = "", category = "" } = req.query;
   const filter = { active: true };
@@ -53,22 +56,39 @@ export const createProduct = asyncHandler(async (req, res) => {
     parsedStock < 0 ||
     !req.file;
   if (invalid) {
-    if (req.file) await unlink(req.file.path);
     throw new AppError(
       "Provide a valid name, price, category, stock, image, short description, and description",
       400,
       "INVALID_PRODUCT",
     );
   }
-  const product = await Product.create({
-    name: name.trim(),
-    price: parsedPrice,
-    category,
-    shortDescription: shortDescription.trim(),
-    description: description.trim(),
-    image: `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`,
-    stock: parsedStock,
-  });
+  const uploadedImage = await uploadProductImage(req.file.buffer);
+  let product;
+  try {
+    product = await Product.create({
+      name: name.trim(),
+      price: parsedPrice,
+      category,
+      shortDescription: shortDescription.trim(),
+      description: description.trim(),
+      image: uploadedImage.url,
+      stock: parsedStock,
+    });
+  } catch (error) {
+    try {
+      await deleteCloudinaryImage(uploadedImage.publicId);
+    } catch (cleanupError) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          message: "Failed to clean up an unreferenced Cloudinary image",
+          publicId: uploadedImage.publicId,
+          error: cleanupError.message,
+        }),
+      );
+    }
+    throw error;
+  }
   res.status(201).json({ success: true, product });
 });
 export const deleteProduct = asyncHandler(async (req, res) => {

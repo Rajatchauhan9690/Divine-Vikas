@@ -32,6 +32,7 @@ app.use(
           "'self'",
           "data:",
           "https://images.unsplash.com",
+          "https://res.cloudinary.com",
           ...env.imageOrigins,
         ],
       },

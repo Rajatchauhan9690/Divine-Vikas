@@ -1,8 +1,32 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 const C = createContext(null);
 export const useCart = () => useContext(C);
+function readSavedItems() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("divine-vikas-cart") || "[]");
+    return Array.isArray(saved)
+      ? saved.filter(
+          (item) =>
+            item &&
+            typeof item._id === "string" &&
+            Number.isInteger(item.qty) &&
+            item.qty > 0,
+        )
+      : [];
+  } catch (error) {
+    console.error("Could not read the saved cart.", error);
+    return [];
+  }
+}
 export function CartProvider({ children }) {
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState(readSavedItems);
+  useEffect(() => {
+    try {
+      localStorage.setItem("divine-vikas-cart", JSON.stringify(items));
+    } catch (error) {
+      console.error("Could not save the cart.", error);
+    }
+  }, [items]);
   const add = (p) =>
     setItems((old) => {
       const found = old.find((i) => i._id === p._id);

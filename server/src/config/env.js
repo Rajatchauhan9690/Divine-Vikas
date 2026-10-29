@@ -15,6 +15,11 @@ export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: Number(process.env.PORT) || 5000,
   mongoUri: process.env.MONGODB_URI,
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    apiKey: process.env.CLOUDINARY_API_KEY,
+    apiSecret: process.env.CLOUDINARY_API_SECRET,
+  },
   imageOrigins: (
     process.env.IMAGE_ORIGINS ||
     `http://localhost:${Number(process.env.PORT) || 5000},http://127.0.0.1:${Number(process.env.PORT) || 5000}`
