@@ -157,12 +157,14 @@ test('two concurrent users cannot book the same class seat', async () => {
   const originalClientSecret = process.env.CASHFREE_CLIENT_SECRET;
   let cashfreeOrderExpiry;
   let cashfreeCustomerPhone;
+  let cashfreeReturnUrl;
   process.env.CASHFREE_CLIENT_ID = 'test-client-id';
   process.env.CASHFREE_CLIENT_SECRET = 'test-client-secret';
   globalThis.fetch = async (_url, options) => {
     const body = JSON.parse(options.body);
     cashfreeOrderExpiry = body.order_expiry_time;
     cashfreeCustomerPhone = body.customer_details.customer_phone;
+    cashfreeReturnUrl = body.order_meta.return_url;
     return new Response(JSON.stringify({
       order_id: body.order_id,
       payment_session_id: 'test-payment-session',
@@ -182,6 +184,8 @@ test('two concurrent users cannot book the same class seat', async () => {
     assert.equal(stored.seats[0].bookedBy.toString(), users[winnerIndex].user.id);
     assert.ok(stored.seats[0].paymentSessionId);
     assert.equal(cashfreeCustomerPhone, '9876543210');
+    assert.equal(results[winnerIndex].body.payment.returnUrl, cashfreeReturnUrl);
+    assert.match(cashfreeReturnUrl, /payment=return&class_id=.*&seat=S01$/);
     const expiryMs = Date.parse(cashfreeOrderExpiry);
     assert.ok(expiryMs - Date.now() > 15 * 60 * 1000, 'Cashfree expiry must be more than 15 minutes away');
     assert.ok(expiryMs - Date.now() < 30 * 24 * 60 * 60 * 1000, 'Cashfree expiry must be less than 30 days away');
@@ -283,6 +287,8 @@ test('customer can hold and pay for up to three class seats in one order', async
   const originalClientId = process.env.CASHFREE_CLIENT_ID;
   const originalClientSecret = process.env.CASHFREE_CLIENT_SECRET;
   let orderAmount;
+  let cashfreeCustomerEmail;
+  let cashfreeCustomerPhone;
   let paymentStatus = 'SUCCESS';
   process.env.CASHFREE_CLIENT_ID = 'test-client-id';
   process.env.CASHFREE_CLIENT_SECRET = 'test-client-secret';
@@ -293,6 +299,8 @@ test('customer can hold and pay for up to three class seats in one order', async
       ]), { status: 200 });
     const body = JSON.parse(options.body);
     orderAmount = body.order_amount;
+    cashfreeCustomerEmail = body.customer_details.customer_email;
+    cashfreeCustomerPhone = body.customer_details.customer_phone;
     return new Response(JSON.stringify({
       order_id: body.order_id,
       payment_session_id: 'group-payment-session',
@@ -306,9 +314,15 @@ test('customer can hold and pay for up to three class seats in one order', async
     const payment = await request(app)
       .post(`/api/classes/${session._id}/seats/payment`)
       .set(headers)
-      .send({ seatNumbers: ['S01', 'S02', 'S03'] })
+      .send({
+        seatNumbers: ['S01', 'S02', 'S03'],
+        email: 'Booking.Contact@example.com',
+        phone: '+91 9876543210',
+      })
       .expect(201);
     assert.equal(orderAmount, 750);
+    assert.equal(cashfreeCustomerEmail, 'booking.contact@example.com');
+    assert.equal(cashfreeCustomerPhone, '9876543210');
     assert.deepEqual(payment.body.payment.seatNumbers, ['S01', 'S02', 'S03']);
     const heldSession = await ClassSession.findById(session._id).lean();
     const heldSeats = heldSession.seats.filter(
@@ -412,6 +426,36 @@ test('customer can hold and pay for up to three class seats in one order', async
   }
 });
 
+test('class booking rejects invalid contact details before holding seats', async () => {
+  const customer = await registerUser('class-contact-validation@example.com');
+  const session = await ClassSession.create({
+    title: 'Contact Validation Class',
+    instructorName: 'Instructor',
+    startsAt: new Date(Date.now() + 60 * 60 * 1000),
+    price: 250,
+    durationMinutes: 45,
+    seats: [{ seatNumber: 'S01', status: 'available' }],
+  });
+  const headers = {
+    Authorization: `Bearer ${customer.accessToken}`,
+    Origin: 'http://localhost:5173',
+  };
+  const invalidEmail = await request(app)
+    .post(`/api/classes/${session._id}/seats/payment`)
+    .set(headers)
+    .send({ seatNumbers: ['S01'], email: 'not-an-email', phone: '9876543210' })
+    .expect(400);
+  assert.equal(invalidEmail.body.code, 'INVALID_BOOKING_EMAIL');
+  const invalidPhone = await request(app)
+    .post(`/api/classes/${session._id}/seats/payment`)
+    .set(headers)
+    .send({ seatNumbers: ['S01'], email: 'valid@example.com', phone: '12345' })
+    .expect(400);
+  assert.equal(invalidPhone.body.code, 'INVALID_BOOKING_PHONE');
+  assert.equal(await ClassPaymentHold.countDocuments({ accountId: customer.user.id }), 0);
+  assert.equal((await ClassSession.findById(session._id)).seats[0].status, 'available');
+});
+
 test('class payment creation is rate-limited per account', async () => {
   const customer = await registerUser('class-rate-limit@example.com');
   const headers = {
@@ -432,6 +476,53 @@ test('class payment creation is rate-limited per account', async () => {
     .expect(429);
   assert.equal(limited.body.code, 'CLASS_BOOKING_RATE_LIMITED');
   assert.ok(Number(limited.headers['retry-after']) > 0);
+});
+
+test('admin class list includes past and upcoming sessions', async () => {
+  const administrator = await registerUser('class-list-admin@example.com');
+  await User.updateOne({ _id: administrator.user.id }, { $set: { role: 'admin' } });
+  const pastSession = await ClassSession.create({
+    title: 'Past Class Session',
+    instructorName: 'Instructor',
+    startsAt: new Date(Date.now() - 60 * 60 * 1000),
+    price: 250,
+    durationMinutes: 45,
+    seats: [{ seatNumber: 'S01', status: 'booked' }],
+  });
+  const upcomingSession = await ClassSession.create({
+    title: 'Upcoming Class Session',
+    instructorName: 'Instructor',
+    startsAt: new Date(Date.now() + 60 * 60 * 1000),
+    price: 250,
+    durationMinutes: 45,
+    seats: [{ seatNumber: 'S01', status: 'available' }],
+  });
+
+  const defaultView = await request(app)
+    .get('/api/admin/classes')
+    .set('Authorization', 'Bearer ' + administrator.accessToken)
+    .expect(200);
+  assert.deepEqual(
+    defaultView.body.sessions.map((session) => session._id),
+    [upcomingSession._id.toString()],
+  );
+  const response = await request(app)
+    .get('/api/admin/classes?view=all')
+    .set('Authorization', 'Bearer ' + administrator.accessToken)
+    .expect(200);
+  assert.deepEqual(
+    response.body.sessions.map((session) => session._id),
+    [upcomingSession._id.toString(), pastSession._id.toString()],
+  );
+  assert.equal(response.body.sessions[1].seats[0].status, 'booked');
+  const pastOnly = await request(app)
+    .get('/api/admin/classes?view=past&search=Past%20Class')
+    .set('Authorization', 'Bearer ' + administrator.accessToken)
+    .expect(200);
+  assert.deepEqual(
+    pastOnly.body.sessions.map((session) => session._id),
+    [pastSession._id.toString()],
+  );
 });
 
 test('terminal failed class payment webhook immediately releases every held seat', async () => {
@@ -629,6 +720,115 @@ test('customers can safely resume their own active class payment hold', async ()
     assert.equal(resumed.body.payment.paymentSessionId, paymentSessionId);
     assert.equal(resumed.body.payment.environment, 'sandbox');
     assert.deepEqual(resumed.body.booking.seatNumbers, ['S01']);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalClientId === undefined) delete process.env.CASHFREE_CLIENT_ID;
+    else process.env.CASHFREE_CLIENT_ID = originalClientId;
+    if (originalClientSecret === undefined) delete process.env.CASHFREE_CLIENT_SECRET;
+    else process.env.CASHFREE_CLIENT_SECRET = originalClientSecret;
+  }
+});
+
+test('customer can release class seats when Cashfree confirms no payment was attempted', async () => {
+  const customer = await registerUser('cancel-class-payment@example.com');
+  const session = await ClassSession.create({
+    title: 'Cancel Payment Class',
+    instructorName: 'Instructor',
+    startsAt: new Date(Date.now() + 60 * 60 * 1000),
+    price: 250,
+    durationMinutes: 45,
+    seats: [{ seatNumber: 'S01', status: 'available' }],
+  });
+  const originalFetch = globalThis.fetch;
+  const originalClientId = process.env.CASHFREE_CLIENT_ID;
+  const originalClientSecret = process.env.CASHFREE_CLIENT_SECRET;
+  let cancelRequested = false;
+  process.env.CASHFREE_CLIENT_ID = 'test-client-id';
+  process.env.CASHFREE_CLIENT_SECRET = 'test-client-secret';
+  globalThis.fetch = async (url, options) => {
+    if (String(url).endsWith('/payments'))
+      return new Response(JSON.stringify([
+        { payment_status: 'NOT_ATTEMPTED', payment_amount: 250 },
+      ]), { status: 200 });
+    if (String(url).endsWith('/cancel')) cancelRequested = true;
+    const body = JSON.parse(options.body);
+    return new Response(JSON.stringify({
+      order_id: body.order_id,
+      payment_session_id: 'cancel-test-payment-session',
+    }), { status: 200 });
+  };
+  try {
+    const headers = { Authorization: `Bearer ${customer.accessToken}` };
+    const payment = await request(app)
+      .post(`/api/classes/${session._id}/seats/payment`)
+      .set(headers)
+      .send({ seatNumbers: ['S01'], email: customer.user.email, phone: '9876543210' })
+      .expect(201);
+    const paymentOrderId = payment.body.payment.paymentOrderId;
+    assert.equal((await ClassSession.findById(session._id)).seats[0].status, 'pending_payment');
+
+    const cancelled = await request(app)
+      .post(`/api/classes/${session._id}/payments/${paymentOrderId}/cancel`)
+      .set(headers)
+      .expect(200);
+    assert.equal(cancelRequested, false);
+    assert.equal(cancelled.body.paymentStatus, 'cancelled');
+    assert.equal((await ClassSession.findById(session._id)).seats[0].status, 'available');
+    assert.equal(await ClassPaymentHold.countDocuments({ accountId: customer.user.id }), 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalClientId === undefined) delete process.env.CASHFREE_CLIENT_ID;
+    else process.env.CASHFREE_CLIENT_ID = originalClientId;
+    if (originalClientSecret === undefined) delete process.env.CASHFREE_CLIENT_SECRET;
+    else process.env.CASHFREE_CLIENT_SECRET = originalClientSecret;
+  }
+});
+
+test('customer cannot release class seats while Cashfree is processing payment', async () => {
+  const customer = await registerUser('pending-class-payment@example.com');
+  const session = await ClassSession.create({
+    title: 'Pending Payment Class',
+    instructorName: 'Instructor',
+    startsAt: new Date(Date.now() + 60 * 60 * 1000),
+    price: 250,
+    durationMinutes: 45,
+    seats: [{ seatNumber: 'S01', status: 'available' }],
+  });
+  const originalFetch = globalThis.fetch;
+  const originalClientId = process.env.CASHFREE_CLIENT_ID;
+  const originalClientSecret = process.env.CASHFREE_CLIENT_SECRET;
+  let cancelRequested = false;
+  process.env.CASHFREE_CLIENT_ID = 'test-client-id';
+  process.env.CASHFREE_CLIENT_SECRET = 'test-client-secret';
+  globalThis.fetch = async (url, options) => {
+    if (String(url).endsWith('/payments'))
+      return new Response(JSON.stringify([
+        { payment_status: 'PENDING', payment_amount: 250 },
+      ]), { status: 200 });
+    if (String(url).endsWith('/cancel')) cancelRequested = true;
+    const body = JSON.parse(options.body);
+    return new Response(JSON.stringify({
+      order_id: body.order_id,
+      payment_session_id: 'pending-test-payment-session',
+    }), { status: 200 });
+  };
+  try {
+    const headers = { Authorization: `Bearer ${customer.accessToken}` };
+    const payment = await request(app)
+      .post(`/api/classes/${session._id}/seats/payment`)
+      .set(headers)
+      .send({ seatNumbers: ['S01'], email: customer.user.email, phone: '9876543210' })
+      .expect(201);
+    const paymentOrderId = payment.body.payment.paymentOrderId;
+
+    const response = await request(app)
+      .post(`/api/classes/${session._id}/payments/${paymentOrderId}/cancel`)
+      .set(headers)
+      .expect(409);
+    assert.equal(response.body.code, 'PAYMENT_CANCELLATION_PENDING');
+    assert.equal(cancelRequested, false);
+    assert.equal((await ClassSession.findById(session._id)).seats[0].status, 'pending_payment');
+    assert.equal(await ClassPaymentHold.countDocuments({ accountId: customer.user.id }), 1);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalClientId === undefined) delete process.env.CASHFREE_CLIENT_ID;
@@ -954,7 +1154,17 @@ test('admin product and order list endpoints return paginated results', async ()
     total: 23,
     pages: 3,
   });
+  const matchingProducts = await request(app)
+    .get('/api/admin/products?search=Pagination%20Product%2011')
+    .set(headers)
+    .expect(200);
+  assert.equal(matchingProducts.body.pagination.total, 1);
+  assert.equal(matchingProducts.body.products[0].name, 'Pagination Product 11');
 
+  await Order.updateOne(
+    { user: administrator.user.id, total: 100 },
+    { $set: { status: 'delivered' } },
+  );
   const orders = await request(app)
     .get('/api/admin/orders?page=2&limit=10')
     .set(headers)
@@ -966,12 +1176,26 @@ test('admin product and order list endpoints return paginated results', async ()
     total: 12,
     pages: 2,
   });
+  assert.equal(orders.body.totalOrders, 12);
 
   const byName = await request(app)
     .get('/api/admin/orders?search=Test%20User')
     .set(headers)
     .expect(200);
   assert.equal(byName.body.pagination.total, 12);
+
+  const deliveredOrders = await request(app)
+    .get('/api/admin/orders?status=delivered')
+    .set(headers)
+    .expect(200);
+  assert.equal(deliveredOrders.body.pagination.total, 1);
+  assert.equal(deliveredOrders.body.orders[0].status, 'delivered');
+
+  const pendingOrders = await request(app)
+    .get('/api/admin/orders?status=pending')
+    .set(headers)
+    .expect(200);
+  assert.equal(pendingOrders.body.pagination.total, 11);
 
   const byAmount = await request(app)
     .get('/api/admin/orders?search=10')

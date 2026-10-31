@@ -3,6 +3,7 @@ import {
   listClassSessions,
   myClassPaymentHolds,
   myClassBookings,
+  cancelClassOrderPayment,
   resumeClassOrderPayment,
   reserveClassSeat,
   reserveClassSeats,
@@ -15,6 +16,11 @@ const router = Router();
 router.get("/", listClassSessions);
 router.get("/my-payment-holds", protect, myClassPaymentHolds);
 router.get("/my-bookings", protect, myClassBookings);
+router.post(
+  "/:classId/payments/:paymentOrderId/cancel",
+  protect,
+  cancelClassOrderPayment,
+);
 router.post(
   "/:classId/payments/:paymentOrderId/resume",
   protect,

@@ -20,12 +20,18 @@ export default function Auth({ mode = "login" }) {
       const u = isLogin
         ? await login({ email: form.email, password: form.password })
         : await register(form);
+      const returnTo = location.state?.from;
+      const destination =
+        typeof returnTo === "string"
+          ? returnTo
+          : returnTo?.pathname
+            ? `${returnTo.pathname}${returnTo.search || ""}${returnTo.hash || ""}`
+            : null;
       nav(
         u.role === "admin"
           ? "/admin"
-          : location.state?.from === "/cart"
-            ? "/cart"
-            : "/shop",
+          : destination ||
+              (location.state?.from === "/cart" ? "/cart" : "/shop"),
       );
     } catch (err) {
       setError(
@@ -128,7 +134,10 @@ export default function Auth({ mode = "login" }) {
         </form>
         <p className="auth-switch">
           {isLogin ? "New to Divine Vikas? " : "Already have an account? "}
-          <Link to={isLogin ? "/register" : "/login"}>
+          <Link
+            to={isLogin ? "/register" : "/login"}
+            state={location.state}
+          >
             {isLogin ? "Create an account" : "Sign in"}
           </Link>
         </p>

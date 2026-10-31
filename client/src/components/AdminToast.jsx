@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, X, XCircle } from "lucide-react";
+import { createPortal } from "react-dom";
 
 function ToastItem({ toast, onDismiss }) {
   useEffect(() => {
@@ -60,7 +61,7 @@ export default function AdminToast({ toast, onDismiss }) {
 
   if (!toasts.length) return null;
 
-  return (
+  return createPortal(
     <div className="admin-toast-stack">
       {toasts.map((item) => (
         <ToastItem
@@ -69,6 +70,7 @@ export default function AdminToast({ toast, onDismiss }) {
           onDismiss={dismiss}
         />
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }

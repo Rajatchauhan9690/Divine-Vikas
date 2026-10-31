@@ -1,8 +1,9 @@
 import AdminOrders from "../components/AdminOrders";
+import AdminBookings from "../components/AdminBookings";
 import AdminClassSessionForm from "../components/AdminClassSessionForm";
 import AdminToast from "../components/AdminToast";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, Navigate, useLocation } from "react-router-dom";
+import { Link, NavLink, Navigate, useLocation } from "react-router-dom";
 import {
   Package,
   ShoppingCart,
@@ -10,6 +11,7 @@ import {
   IndianRupee,
   Plus,
   RefreshCw,
+  Search,
   Trash2,
   X,
   CalendarDays,
@@ -98,6 +100,7 @@ export default function Admin() {
   const sectionTitle = {
     "/products": "Products",
     "/classes": "Class sessions",
+    "/bookings": "Bookings",
     "/orders": "Orders",
   }[section];
   const [data, setData] = useState({ products: [], orders: [], users: [] }),
@@ -112,11 +115,17 @@ export default function Admin() {
     useState(false);
   const [deletingProduct, setDeletingProduct] = useState("");
   const [productPage, setProductPage] = useState(1);
+  const [productSearch, setProductSearch] = useState("");
   const [productPagination, setProductPagination] = useState({
     page: 1,
     pages: 1,
     total: 0,
   });
+  const productsRequest = useRef(null);
+  const productPageRef = useRef(productPage);
+  const productSearchRef = useRef(productSearch.trim());
+  productPageRef.current = productPage;
+  productSearchRef.current = productSearch.trim();
   const productFormRef = useRef(null);
   const dismissToast = useCallback(() => setToast(null), []);
   useEffect(() => {
@@ -146,30 +155,49 @@ export default function Admin() {
       return false;
     }
   }
-  async function loadProducts(page = productPage) {
+  async function loadProducts(
+    page = productPageRef.current,
+    search = productSearchRef.current,
+  ) {
+    productsRequest.current?.abort();
+    const controller = new AbortController();
+    productsRequest.current = controller;
     try {
-      const { data: result } = await api.get(
-        `/admin/products?page=${page}&limit=10`,
-      );
+      const { data: result } = await api.get("/admin/products", {
+        params: { page, limit: 10, search },
+        signal: controller.signal,
+      });
       if (result.pagination.total && page > result.pagination.pages)
-        return loadProducts(result.pagination.pages);
+        return loadProducts(result.pagination.pages, search);
       setData((current) => ({ ...current, products: result.products || [] }));
       setProductPagination(result.pagination);
       setProductPage(result.pagination.page);
       return true;
     } catch (e) {
+      if (controller.signal.aborted) return true;
       setToast({
         type: "error",
         text: e.response?.data?.message || "Could not load products.",
       });
       return false;
+    } finally {
+      if (productsRequest.current === controller) productsRequest.current = null;
     }
   }
   useEffect(() => {
     if (user?.role !== "admin") return;
-    if (section === "/products") loadProducts(1);
-    else if (section === "/") load();
+    if (section === "/") load();
   }, [user, section]);
+  useEffect(() => {
+    if (user?.role !== "admin" || section !== "/products") return;
+    const timer = window.setTimeout(() => {
+      loadProducts(1, productSearch.trim());
+    }, 300);
+    return () => {
+      window.clearTimeout(timer);
+      productsRequest.current?.abort();
+    };
+  }, [user, section, productSearch]);
   if (!ready) return <div className="loading-state">Loading…</div>;
   if (!user || user.role !== "admin") return <Navigate to="/login" replace />;
   async function create(e) {
@@ -283,24 +311,25 @@ export default function Admin() {
             {sectionTitle ? ` Manage ${sectionTitle.toLowerCase()} here.` : " Here is your store at a glance."}
           </p>
         </div>
-        {["/", "/products"].includes(section) && (
+        {section === "/" && (
           <button
             className="btn btn-outline"
-            onClick={() => (section === "/products" ? loadProducts() : load())}
+            onClick={load}
           >
             <RefreshCw size={16} /> Refresh
           </button>
         )}
       </div>
       <AdminToast toast={toast} onDismiss={dismissToast} />
-      {section !== "/" && (
-        <nav className="admin-section-nav" aria-label="Admin sections">
-          <Link to="/admin">Overview</Link>
-          <Link to="/admin/products">Products</Link>
-          <Link to="/admin/classes">Classes</Link>
-          <Link to="/admin/orders">Orders</Link>
-        </nav>
-      )}
+      <nav className="admin-section-nav" aria-label="Admin sections">
+        <NavLink to="/admin" end>
+          Overview
+        </NavLink>
+        <NavLink to="/admin/products">Products</NavLink>
+        <NavLink to="/admin/classes">Classes</NavLink>
+        <NavLink to="/admin/bookings">Bookings</NavLink>
+        <NavLink to="/admin/orders">Orders</NavLink>
+      </nav>
       {section === "/" && (
         <div className="metrics-grid">
           <Metric
@@ -347,6 +376,11 @@ export default function Admin() {
               <span><b>Orders</b><small>Review orders and update fulfillment</small></span>
               <ChevronRight size={18} />
             </Link>
+            <Link to="/admin/bookings">
+              <CalendarDays size={20} />
+              <span><b>Bookings</b><small>Check available, booked, and held seats by session</small></span>
+              <ChevronRight size={18} />
+            </Link>
           </div>
         </div>
       )}
@@ -355,25 +389,36 @@ export default function Admin() {
       <div className="admin-list-head">
         <div>
           <h2>Products</h2>
-          <p>Manage your fragrance catalogue.</p>
         </div>
-        <button
-          type="button"
-          className={`btn ${show ? "btn-admin-cancel" : "btn-dark"}`}
-          onClick={() => {
-            if (show) {
-              setShow(false);
-              setEditingProductId("");
-              setForm(blank);
-              setProductErrors({});
-              setProductValidationAttempted(false);
-              setImagePreview("");
-            } else setShow(true);
-          }}
-        >
-          {show ? <X size={16} /> : <Plus size={16} />}
-          {show ? "Cancel" : "Add product"}
-        </button>
+        <div className="admin-list-actions">
+          <label className="admin-order-search">
+            <Search size={18} aria-hidden="true" />
+            <input
+              type="search"
+              value={productSearch}
+              onChange={(event) => setProductSearch(event.target.value)}
+              placeholder="Search products"
+              aria-label="Search products by name or description"
+            />
+          </label>
+          <button
+            type="button"
+            className={`btn ${show ? "btn-admin-cancel" : "btn-dark"}`}
+            onClick={() => {
+              if (show) {
+                setShow(false);
+                setEditingProductId("");
+                setForm(blank);
+                setProductErrors({});
+                setProductValidationAttempted(false);
+                setImagePreview("");
+              } else setShow(true);
+            }}
+          >
+            {show ? <X size={16} /> : <Plus size={16} />}
+            {show ? "Cancel" : "Add product"}
+          </button>
+        </div>
       </div>
       {show && (
         <form
@@ -643,7 +688,9 @@ export default function Admin() {
         ))}
         {!data.products?.length && (
           <p className="table-empty">
-            No products yet. Add your first fragrance above.
+            {productSearch.trim()
+              ? "No products match your search."
+              : "No products yet. Add your first fragrance above."}
           </p>
         )}
       </div>
@@ -673,6 +720,7 @@ export default function Admin() {
       )}
       {section === "/orders" && <AdminOrders />}
       {section === "/classes" && <AdminClassSessionForm />}
+      {section === "/bookings" && <AdminBookings />}
     </section>
   );
 }

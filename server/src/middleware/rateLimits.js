@@ -42,7 +42,7 @@ export const loginLimiter = rateLimit({
 const classBookingRateLimitMessage = {
   success: false,
   code: "CLASS_BOOKING_RATE_LIMITED",
-  message: "Too many class payment attempts. Please wait before trying again.",
+  message: "Too many class payment attempts. Try again after 15 min.",
 };
 const classBookingWindowMs = 15 * 60 * 1000;
 

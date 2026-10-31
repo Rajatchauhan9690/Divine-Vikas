@@ -2,40 +2,55 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
-  RefreshCw,
   Search,
   XCircle,
 } from "lucide-react";
 import { api } from "../services/api";
 import AdminToast from "./AdminToast";
 const statuses = ["pending", "paid", "processing", "shipped", "delivered"];
+const orderFilters = [
+  { label: "All", value: "" },
+  { label: "Pending", value: "pending" },
+  { label: "Paid", value: "paid" },
+  { label: "Processing", value: "processing" },
+  { label: "Shipped", value: "shipped" },
+  { label: "Delivered", value: "delivered" },
+  { label: "Cancelled", value: "cancelled" },
+];
 export default function AdminOrders() {
   const [orders, setOrders] = useState([]),
     [toast, setToast] = useState(null),
     [busy, setBusy] = useState(""),
+    [selectedOrderId, setSelectedOrderId] = useState(""),
     [page, setPage] = useState(1),
     [search, setSearch] = useState(""),
-    [pagination, setPagination] = useState({ pages: 1, total: 0 });
+    [statusFilter, setStatusFilter] = useState(""),
+    [pagination, setPagination] = useState({ pages: 1, total: 0 }),
+    [totalOrders, setTotalOrders] = useState(0);
   const ordersRequest = useRef(null);
   const pageRef = useRef(page);
   const searchRef = useRef(search.trim());
+  const statusRef = useRef(statusFilter);
   pageRef.current = page;
   searchRef.current = search.trim();
+  statusRef.current = statusFilter;
   const dismissToast = useCallback(() => setToast(null), []);
   const load = useCallback(async (
     nextPage = pageRef.current,
     query = searchRef.current,
+    status = statusRef.current,
   ) => {
     ordersRequest.current?.abort();
     const controller = new AbortController();
     ordersRequest.current = controller;
     try {
       const { data } = await api.get("/admin/orders", {
-        params: { page: nextPage, limit: 10, search: query },
+        params: { page: nextPage, limit: 10, search: query, status },
         signal: controller.signal,
       });
       setOrders(data.orders || []);
       setPagination(data.pagination);
+      setTotalOrders(data.totalOrders);
       setPage(data.pagination.page);
       return true;
     } catch (e) {
@@ -52,13 +67,13 @@ export default function AdminOrders() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setPage(1);
-      load(1, search.trim());
+      load(1, search.trim(), statusFilter);
     }, 300);
     return () => {
       window.clearTimeout(timer);
       ordersRequest.current?.abort();
     };
-  }, [load, search]);
+  }, [load, search, statusFilter]);
   async function save(order, form) {
     setBusy(order._id);
     try {
@@ -202,29 +217,43 @@ export default function AdminOrders() {
       <div className="admin-list-head">
         <div>
           <h2>Orders</h2>
-          <p>
-            {pagination.total} total orders. Open an order to edit its
-            fulfillment details.
-          </p>
         </div>
-        <label className="admin-order-search">
-          <Search size={18} aria-hidden="true" />
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search name, amount, or order ID"
-            aria-label="Search orders by customer name, amount, or order ID"
-          />
-        </label>
-        <button
-          type="button"
-          className="btn btn-outline"
-          onClick={() => load(page, search.trim())}
-          disabled={Boolean(busy)}
-        >
-          <RefreshCw size={16} /> Refresh orders
-        </button>
+        <div className="admin-list-actions">
+          <label className="admin-order-search">
+            <Search size={18} aria-hidden="true" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => {
+                setSelectedOrderId("");
+                setSearch(event.target.value);
+              }}
+              placeholder="Search by customer name or amount"
+              aria-label="Search orders by customer name or amount"
+            />
+          </label>
+        </div>
+      </div>
+      <div className="admin-order-filter-row">
+        <div className="admin-order-filters" aria-label="Filter orders by status">
+          {orderFilters.map((filter) => (
+            <button
+              type="button"
+              key={filter.value || "all"}
+              className={`admin-order-filter-chip admin-order-filter-${filter.value || "all"}${statusFilter === filter.value ? " active" : ""}`}
+              aria-pressed={statusFilter === filter.value}
+              onClick={() => {
+                setSelectedOrderId("");
+                setStatusFilter(filter.value);
+              }}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+        <div className="admin-order-total" aria-live="polite">
+          Total orders <strong>{totalOrders}</strong>
+        </div>
       </div>
       <AdminToast toast={toast} onDismiss={dismissToast} />
       {orders.length === 0 && (
@@ -232,19 +261,65 @@ export default function AdminOrders() {
           {search.trim() ? "No orders match your search." : "No orders found."}
         </p>
       )}
-      {orders.map((o) => (
-        <OrderRow
-          key={o._id}
-          order={o}
-          busy={busy === o._id}
-          save={save}
-          cancel={cancel}
-          manageReturn={manageReturn}
-          findCouriers={findCouriers}
-          createShipment={createShipment}
-          retryWhatsApp={retryWhatsApp}
-        />
-      ))}
+      {selectedOrderId && orders.some((order) => order._id === selectedOrderId) ? (
+        <div className="admin-order-detail-view">
+          <button
+            type="button"
+            className="btn btn-outline admin-order-back"
+            onClick={() => setSelectedOrderId("")}
+          >
+            <ChevronLeft size={16} /> Back to orders
+          </button>
+          {orders
+            .filter((order) => order._id === selectedOrderId)
+            .map((order) => (
+              <OrderRow
+                key={order._id}
+                order={order}
+                busy={busy === order._id}
+                save={save}
+                cancel={cancel}
+                manageReturn={manageReturn}
+                findCouriers={findCouriers}
+                createShipment={createShipment}
+                retryWhatsApp={retryWhatsApp}
+              />
+            ))}
+        </div>
+      ) : (
+        <div className="admin-order-card-grid">
+          {orders.map((order) => (
+            <button
+              type="button"
+              className="admin-order-card"
+              key={order._id}
+              onClick={() => setSelectedOrderId(order._id)}
+            >
+              <span className="admin-order-card-id">
+                Order #{String(order._id).slice(-8).toUpperCase()}
+              </span>
+              <strong>{order.user?.name || "Customer"}</strong>
+              <span className="admin-order-card-total">
+                ₹{Number(order.total).toLocaleString("en-IN")}
+              </span>
+              <span className="admin-order-card-meta">
+                {order.items.length} {order.items.length === 1 ? "item" : "items"}
+                {" · "}
+                {new Date(order.createdAt).toLocaleDateString()}
+              </span>
+              <span className="admin-order-card-meta">
+                {order.paymentMethod} · {order.paymentStatus}
+              </span>
+              <span
+                className={`admin-order-card-status status-${order.status}`}
+              >
+                {order.status}
+              </span>
+              <span className="admin-order-card-open">View order details</span>
+            </button>
+          ))}
+        </div>
+      )}
       {pagination.total > 0 && (
         <div className="admin-pagination">
           <button
@@ -304,20 +379,23 @@ function OrderRow({
     setCourierId(choices[0] ? String(choices[0].id) : "");
   }
   return (
-    <details className="admin-order-row">
-      <summary className="admin-order-overview">
-        <b>
-          #{String(order._id).slice(-8).toUpperCase()} ·{" "}
-          {order.user?.name || "Customer"}
-        </b>
-        <span>
-          ₹{order.total} · {order.paymentMethod} ({order.paymentStatus})
+    <article className="admin-order-row">
+      <header className="admin-order-detail-heading">
+        <div>
+          <span className="admin-order-card-id">
+            Order #{String(order._id).slice(-8).toUpperCase()}
+          </span>
+          <h3>{order.user?.name || "Customer"}</h3>
+          <p>
+            ₹{Number(order.total).toLocaleString("en-IN")} ·{" "}
+            {order.shippingAddress?.city}, {order.shippingAddress?.state} ·{" "}
+            {new Date(order.createdAt).toLocaleDateString()}
+          </p>
+        </div>
+        <span className={`admin-order-card-status status-${order.status}`}>
+          {order.status}
         </span>
-        <small>
-          {order.shippingAddress?.city}, {order.shippingAddress?.state} ·{" "}
-          {new Date(order.createdAt).toLocaleDateString()}
-        </small>
-      </summary>
+      </header>
       <div className="admin-order-return-deadlines">
         <b>Product return deadlines</b>
         {deliveredAt && !Number.isNaN(deliveredAt.getTime()) && (
@@ -590,6 +668,6 @@ function OrderRow({
             )}
         </div>
       </form>
-    </details>
+    </article>
   );
 }

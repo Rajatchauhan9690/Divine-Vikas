@@ -44,6 +44,13 @@ function pagination(query) {
 export const listAdminProducts = asyncHandler(async (req, res) => {
   const { page, limit, skip } = pagination(req.query);
   const filter = { active: true };
+  const search = String(req.query.search || "").trim().slice(0, 100);
+  if (search) {
+    const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    filter.$or = ["name", "shortDescription", "description"].map((field) => ({
+      [field]: { $regex: escapedSearch, $options: "i" },
+    }));
+  }
   const [products, total] = await Promise.all([
     Product.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
     Product.countDocuments(filter),
@@ -59,6 +66,21 @@ export const listAdminOrders = asyncHandler(async (req, res) => {
   const { page, limit, skip } = pagination(req.query);
   const search = String(req.query.search || "").trim().slice(0, 100);
   const filter = {};
+  const searchFilter = {};
+  const status = String(req.query.status || "");
+  const orderStatuses = [
+    "pending",
+    "paid",
+    "processing",
+    "shipped",
+    "delivered",
+    "cancelled",
+  ];
+  if (status) {
+    if (!orderStatuses.includes(status))
+      throw new AppError("Invalid order status filter", 400, "INVALID_ORDER_STATUS");
+    filter.status = status;
+  }
   if (search) {
     const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const matchingUsers = await User.find({
@@ -86,9 +108,10 @@ export const listAdminOrders = asyncHandler(async (req, res) => {
           },
         },
       });
-    filter.$or = conditions;
+    searchFilter.$or = conditions;
   }
-  const [orders, total] = await Promise.all([
+  Object.assign(filter, searchFilter);
+  const [orders, total, totalOrders] = await Promise.all([
     Order.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -98,11 +121,13 @@ export const listAdminOrders = asyncHandler(async (req, res) => {
       .populate("returnRequest.reviewedBy", "name role")
       .lean(),
     Order.countDocuments(filter),
+    Order.countDocuments(searchFilter),
   ]);
   res.json({
     success: true,
     orders,
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    totalOrders,
   });
 });
 

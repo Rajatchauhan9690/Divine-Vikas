@@ -2,14 +2,12 @@ import { useEffect, useState } from "react";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { api } from "../services/api";
 import ProductCard from "../components/ProductCard";
-import AdminToast from "../components/AdminToast";
 export default function Shop() {
   const [products, setProducts] = useState([]),
     [search, setSearch] = useState(""),
     [category, setCategory] = useState("All"),
     [loading, setLoading] = useState(true),
-    [error, setError] = useState(""),
-    [toast, setToast] = useState(null);
+    [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
     const timer = setTimeout(() => {
@@ -40,7 +38,6 @@ export default function Shop() {
   }, [search, category]);
   return (
     <section className="section shop-page">
-      <AdminToast toast={toast} onDismiss={() => setToast(null)} />
       <div className="shop-intro">
         <span className="eyebrow">SOMETHING FOR EVERY MOOD</span>
         <h1>
@@ -77,13 +74,7 @@ export default function Shop() {
       ) : products.length ? (
         <div className="product-grid">
           {products.map((p) => (
-            <ProductCard
-              key={p._id}
-              product={p}
-              onAdd={(product) =>
-                setToast({ type: "success", text: `${product.name} added to cart.` })
-              }
-            />
+            <ProductCard key={p._id} product={p} />
           ))}
         </div>
       ) : (

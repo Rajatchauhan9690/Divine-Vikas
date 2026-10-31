@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, Navigate, useSearchParams } from "react-router-dom";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Package,
+} from "lucide-react";
+import {
+  Link,
+  Navigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
 import { useCart } from "../features/cart/CartContext";
@@ -38,9 +48,11 @@ export default function Orders() {
   const [orders, setOrders] = useState([]),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
-    [busy, setBusy] = useState("");
+    [busy, setBusy] = useState(""),
+    [ordersLoaded, setOrdersLoaded] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [params] = useSearchParams();
+  const { id: orderId } = useParams();
   const verifiedPaymentReturn = useRef("");
   const [addressChangeOrderId, setAddressChangeOrderId] = useState("");
   const [savedAddresses, setSavedAddresses] = useState([]);
@@ -52,12 +64,17 @@ export default function Orders() {
   async function load() {
     const r = await api.get("/orders/mine");
     setOrders(r.data.orders);
+    setOrdersLoaded(true);
   }
   useEffect(() => {
-    if (user)
-      load().catch((e) =>
+    if (!user) return;
+    load()
+      .catch((e) =>
         setError(e.response?.data?.message || "Could not load orders"),
-      );
+      )
+      .finally(() => {
+        setOrdersLoaded(true);
+      });
   }, [user]);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 10000);
@@ -234,7 +251,15 @@ export default function Orders() {
     <section className="section orders-page">
       <span className="eyebrow">YOUR PURCHASES</span>
       <h1 className="account-title">
-        My <em>orders.</em>
+        {orderId ? (
+          <>
+            Order <em>details.</em>
+          </>
+        ) : (
+          <>
+            My <em>orders.</em>
+          </>
+        )}
       </h1>
       <p className="account-intro">
         Track each order, review its delivery address and check payment status.
@@ -245,7 +270,22 @@ export default function Orders() {
       </p>
       {notice && <p className="notice">{notice}</p>}
       {error && <p className="notice error">{error}</p>}
-      {!orders.length ? (
+      {orderId && (
+        <Link className="order-details-back" to="/orders">
+          <ArrowLeft size={17} /> Back to my orders
+        </Link>
+      )}
+      {orderId && !ordersLoaded ? (
+        <div className="loading-state">Loading your order…</div>
+      ) : orderId && !orders.some((order) => order._id === orderId) ? (
+        <div className="empty-products">
+          <h3>Order not found.</h3>
+          <p>This order may no longer be available.</p>
+          <Link className="btn btn-dark" to="/orders">
+            Back to my orders
+          </Link>
+        </div>
+      ) : !orders.length ? (
         <div className="empty-products">
           <h3>No orders yet.</h3>
           <p>Your next favourite fragrance is waiting.</p>
@@ -254,8 +294,54 @@ export default function Orders() {
           </Link>
         </div>
       ) : (
-        <div className="orders-list">
-          {orders.map((o) => (
+        <div
+          className={`orders-list${orderId ? " order-details-list" : ""}`}
+        >
+          {orders
+            .filter((order) => !orderId || order._id === orderId)
+            .map((o) =>
+              !orderId ? (
+                <Link
+                  className="order-card order-list-card"
+                  key={o._id}
+                  to={`/orders/${o._id}`}
+                >
+                  <div className="order-card-head">
+                    <div>
+                      <span className="eyebrow">
+                        ORDER #{String(o._id).slice(-8).toUpperCase()}
+                      </span>
+                      <p>Placed {new Date(o.createdAt).toLocaleString()}</p>
+                    </div>
+                    <span className={`status-pill status-${o.status}`}>
+                      {o.status}
+                    </span>
+                  </div>
+                  <div className="order-list-preview">
+                    <span className="order-list-icon">
+                      <Package size={22} />
+                    </span>
+                    <span className="order-list-items">
+                      {o.items
+                        .slice(0, 2)
+                        .map((item) => `${item.name} × ${item.quantity}`)
+                        .join(", ")}
+                      {o.items.length > 2
+                        ? ` + ${o.items.length - 2} more`
+                        : ""}
+                    </span>
+                  </div>
+                  <div className="order-list-footer">
+                    <span>
+                      {o.items.length} item{o.items.length === 1 ? "" : "s"}
+                      <strong>₹{o.total}</strong>
+                    </span>
+                    <span className="order-list-open">
+                      View order <ArrowRight size={17} />
+                    </span>
+                  </div>
+                </Link>
+              ) : (
             <article className="order-card" key={o._id}>
               <div className="order-card-head">
                 <div>
@@ -268,6 +354,10 @@ export default function Orders() {
                   {o.status}
                 </span>
               </div>
+              <div
+                className="order-card-details"
+                id={`order-details-${o._id}`}
+              >
               <div className="order-products">
                 {o.items.map((i, n) => (
                   <div key={`${i.product}-${n}`}>
@@ -638,8 +728,10 @@ export default function Orders() {
                   })()}
                 </>
               )}
+                </div>
             </article>
-          ))}
+              ),
+            )}
         </div>
       )}
     </section>

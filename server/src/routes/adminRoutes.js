@@ -20,6 +20,7 @@ import { protect, authorize } from "../middleware/auth.js";
 import {
   createClassSession,
   deleteClassSession,
+  listAdminClassSessions,
   updateClassSession,
   updateClassSessionPrice,
 } from "../controllers/classSessionController.js";
@@ -34,6 +35,7 @@ r.patch("/orders/:orderId/return", adminUpdateOrderReturn);
 r.get("/orders/:orderId/couriers", listOrderCouriers);
 r.post("/orders/:orderId/shipment", createOrderShipment);
 r.post("/orders/:orderId/whatsapp/retry", retryOrderWhatsApp);
+r.get("/classes", listAdminClassSessions);
 r.post("/classes", createClassSession);
 r.put("/classes/:classId", updateClassSession);
 r.delete("/classes/:classId", deleteClassSession);

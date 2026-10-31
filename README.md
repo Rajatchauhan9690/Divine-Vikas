@@ -1,131 +1,160 @@
-# Divine Vikas — MERN E-commerce Starter
+# Divine Vikas
 
-Responsive fragrance storefront and admin dashboard scaffold based on the supplied Divine Vikas PDF.
+Divine Vikas is a fragrance storefront with customer accounts, product checkout, paid class-seat bookings, and an admin dashboard for managing products, classes, and order fulfilment.
 
-## Stack
-- Frontend: React, JavaScript, Vite, Tailwind CSS, React Router, Axios
-- Backend: Node.js, Express, MongoDB, Mongoose
-- Auth: short-lived JWT access tokens + rotating refresh tokens in HttpOnly cookies, hashed refresh-token records, session revocation, bcrypt password hashing, customer/admin RBAC
-- Security: Helmet, CORS allowlist, CSRF double-submit protection for cookie-backed auth endpoints, IP rate limits, database-backed login lockout, request validation, centralized errors, structured logging
+## Technology
+
+- **Client:** React 18, Vite, React Router, Tailwind CSS, Axios
+- **Server:** Node.js, Express, MongoDB, Mongoose
+- **Authentication:** short-lived access tokens, rotating refresh tokens in HttpOnly cookies, bcrypt password hashing, customer/admin roles
+- **Payments:** Cashfree Payment Gateway for products and class bookings
+- **Optional integrations:** Cloudinary image uploads, Shiprocket fulfilment, WhatsApp Business notifications
 
 ## Requirements
-Node.js 20+, MongoDB 7+ (local or Atlas).
 
-## Setup
-1. Copy `server/.env.example` to `server/.env` and set secrets + MongoDB URL.
-2. Copy `client/.env.example` to `client/.env`.
-3. In `server/`: `npm install`, then `npm run seed:admin`, then `npm run dev`.
-4. In `client/`: `npm install`, then `npm run dev`.
-5. Open the Vite URL. API defaults to `http://localhost:5000/api`.
+- Node.js 20 or later
+- MongoDB 7 or later (local or MongoDB Atlas)
+- Cashfree credentials to accept online payments
 
-The seed command creates an admin using `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` from `.env`. Change these before running it.
-New product image uploads use Cloudinary and are served from secure Cloudinary URLs. Set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in `server/.env` from your Cloudinary dashboard; keep these credentials on the server and never add them to the client environment. Existing images under `/uploads` remain available. If you use another image host, add its origin to the comma-separated `IMAGE_ORIGINS` setting.
+## Local setup
 
-## Security notes
-- Cookie-backed authentication mutations (`register`, `login`, `refresh`, `logout`, `logout-all`) require a CSRF token. The client bootstraps it from `GET /api/auth/csrf`, sends it in `X-CSRF-Token`, and the server validates the header against the CSRF cookie using a timing-safe comparison. The server also rejects a mismatched browser `Origin`.
-- Login has an IP-level rate limit and a database-backed account lockout after five consecutive failed password attempts. The lockout lasts 15 minutes; a successful login resets the counter. Use a shared persistent rate-limit store when deploying multiple API instances.
-- Refresh rotation atomically claims the previous refresh-token record before issuing its replacement, preventing two requests from successfully rotating the same token. Reuse attempts revoke the active session.
-- Automated tests use `node:test`, Supertest, and an in-memory MongoDB instance. Run them from `server/` with `npm test`; the first run may need network access to download the MongoDB test binary.
-- Refresh tokens are stored only in an HttpOnly cookie and only their SHA-256 hashes are persisted.
-- Refresh rotation revokes the prior session token and issues a new one. Reuse of a revoked token revokes the session.
-- Access tokens are short-lived. Logout revokes the session and clears the cookie.
-- For production, use HTTPS, a strong unique secret, exact frontend origins, a persistent shared rate-limit store, centralized log aggregation, backups, monitoring, and a CSRF strategy appropriate to your deployment.
-- This is a starter project, not a security audit. Review it before production use.
+1. Copy `server/.env.example` to `server/.env`.
+2. Set `MONGODB_URI`, `ACCESS_TOKEN_SECRET`, and `REFRESH_TOKEN_SECRET` in `server/.env`. Use separate, randomly generated secrets; production secrets must be at least 32 characters.
+3. Copy `client/.env.example` to `client/.env`. The defaults connect the client to the local API.
+4. In `server/`, install dependencies and create the initial admin:
 
-## Included
-- Product catalogue, search debounce, category filtering, cart, login/register, customer order endpoint
-- Lazy-loaded routes, reusable UI, memoized product cards, API response caching for public product list
-- Admin dashboard metrics and product CRUD routes guarded by `admin` role
-- Loading, empty and error states; responsive navigation and layout
+   ```sh
+   npm install
+   npm run seed:admin
+   npm run dev
+   ```
 
-## Project structure
-```text
-divine-vikas-mern/
-├── client/
-│   ├── src/
-│   │   ├── app/          # router and app shell
-│   │   ├── components/   # reusable UI
-│   │   ├── features/     # auth, cart, products
-│   │   ├── pages/        # storefront, auth, admin
-│   │   ├── services/     # API client
-│   │   └── styles/
-│   └── ...
-└── server/
-    └── src/
-        ├── config/
-        ├── controllers/
-        ├── middleware/
-        ├── models/
-        ├── routes/
-        ├── services/
-        ├── utils/
-        └── scripts/
-```
+   Set `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` before running the seed command.
+5. In another terminal, start the client:
 
-## Class seat booking (added)
-- Open `/classes` in the React app to view class summaries. Selecting a card opens its seat map.
-- Customers must sign in and can select 1–3 seats for one Cashfree payment. All selected seats are held atomically for up to 20 minutes and become booked only after server-side payment verification. Group holds stay together if checkout is pending or fails.
-- Admins create sessions from the Admin dashboard with a per-seat price. Seats are generated automatically (`S01`, `S02`, ...).
-- `GET /api/classes` lists upcoming sessions; `POST /api/classes/:classId/seats/payment` accepts `{ "seatNumbers": ["S01", "S02"] }`, atomically reserves 1–3 seats, and creates a single Cashfree payment session; `POST /api/classes/:classId/payments/:paymentOrderId/verify` confirms or releases the entire group hold. The single-seat payment and verification routes remain supported for compatibility; `GET /api/classes/my-bookings` lists confirmed bookings.
-- Admin endpoint: `POST /api/admin/classes` with `title`, `instructorName`, `price` (INR per seat), `startsAt` (future ISO date), and optional `description`, `durationMinutes`, `seatCount` (1–600).
-- Admins can delete an upcoming session with `DELETE /api/admin/classes/:classId` only while it has no pending payment holds or booked seats. The session form uses one native date-and-time picker for easy local scheduling.
-- Admin routes include an overview (`/admin`) and separate Products, Classes, and Orders pages. Product and order lists are paginated; class creation and per-order fulfillment controls are expandable to keep the pages compact.
+   ```sh
+   cd client
+   npm install
+   npm run dev
+   ```
 
-### Concurrency guarantee
-Seat holds and payment confirmation use atomic MongoDB updates filtered by class, selected seats, owner, and payment order. If two users attempt overlapping seats concurrently, only one can create a payment session; the other receives HTTP `409 SEAT_UNAVAILABLE`, and group reservations never partially hold seats. A customer can have only one active group checkout at a time, but may book another group after payment completes. A verified Cashfree success atomically books every seat in that payment order. Failed or expired holds become available again. Payment creation is rate-limited to 5 attempts per account and 20 per IP address per 15 minutes using MongoDB-backed counters shared across server instances. Cashfree order expiry is set to the same 20-minute hold window, safely above Cashfree's 15-minute minimum.
+6. Open the Vite URL printed in the client terminal. The API defaults to `http://localhost:5000/api`; the health endpoint is `http://localhost:5000/health`.
 
-## Security and concurrency tests
-From the `server/` directory:
-```bash
-npm install
+Run the server commands from `server/` and the client commands from `client/`.
+
+## Configuration
+
+The server loads settings from `server/.env`. Required values are `MONGODB_URI`, `ACCESS_TOKEN_SECRET`, and `REFRESH_TOKEN_SECRET`. The examples in `server/.env.example` document all supported settings.
+
+| Setting | Purpose |
+| --- | --- |
+| `PORT` | API port; defaults to `5000`. |
+| `CLIENT_ORIGIN` | Allowed browser origin; defaults to `http://localhost:5173`. |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Optional credentials for product image uploads. Keep these server-side. Existing files in `server/uploads/` are also served by the API. |
+| `IMAGE_ORIGINS` | Optional comma-separated image origins allowed by the server's content security policy. |
+| `CASHFREE_ENV`, `CASHFREE_CLIENT_ID`, `CASHFREE_CLIENT_SECRET` | Cashfree Payment Gateway mode and credentials. Use sandbox credentials for development; credentials must never be placed in the client environment. |
+| `CASHFREE_WEBHOOK_URL` | Optional public webhook URL configured for Cashfree. |
+| `SHIPROCKET_EMAIL`, `SHIPROCKET_PASSWORD`, `SHIPROCKET_PICKUP_LOCATION`, `SHIPROCKET_PICKUP_POSTCODE`, `SHIPROCKET_WEBHOOK_TOKEN` | Optional Shiprocket shipping, label, and tracking integration. |
+| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_ORDER_TEMPLATE`, `WHATSAPP_CLASS_TEMPLATE` | Optional WhatsApp Business message integration. Requires approved templates and customer opt-in. |
+
+Client-only settings belong in `client/.env`:
+
+| Setting | Purpose |
+| --- | --- |
+| `VITE_API_URL` | API base URL; defaults to `http://localhost:5000/api`. |
+| `VITE_SUPPORT_WHATSAPP`, `VITE_SUPPORT_EMAIL`, `VITE_SUPPORT_PHONE` | Optional contact information shown on the support page. |
+
+Restart the relevant development server after changing environment settings. Do not commit `.env` files or put provider secrets in client variables.
+
+## Application features
+
+### Storefront and accounts
+
+- Browse products, search and filter the catalogue, view product details, and manage a cart.
+- Register, sign in, view and update a profile, and manage up to **three** saved delivery addresses.
+- Review order history, payment and fulfilment status, tracking information, and return status.
+- Contact support using the configured contact details.
+
+### Product orders
+
+- Checkout uses a saved or newly entered delivery address and Cashfree online payment.
+- The server calculates prices and totals from stored product data; client-provided totals are not trusted.
+- Inventory is reserved while payment is pending. A confirmed payment creates the order; failed or expired attempts release reserved stock.
+- Customers can update an eligible order's delivery address, cancel an order, or request a return when the order and item return policies allow it.
+- Return eligibility is stored with each purchased item so later product-policy changes do not rewrite order terms.
+
+### Class bookings
+
+- Browse upcoming class sessions and reserve one to three seats in a single Cashfree checkout.
+- Seat holds are atomic, last up to 20 minutes, and become confirmed bookings only after server-side payment verification.
+- Customers can review active payment holds and confirmed bookings.
+- Admins can create, edit, price, and delete eligible upcoming sessions. Seats are generated by the server.
+
+### Admin
+
+- Dashboard metrics and separate product, class, and order management views.
+- Product creation and editing, including image upload and return-policy settings.
+- Order fulfilment, cancellations, returns, refunds, and shipping operations.
+- Cashfree orders cannot be marked paid manually; payment status is verified with Cashfree.
+
+## API areas
+
+- `/api/auth` — registration, login, refresh, logout, and current-user endpoints
+- `/api/products` — public product catalogue and product details
+- `/api/profile` — customer profile and saved addresses
+- `/api/orders` — customer checkout, orders, cancellation, returns, and payment verification
+- `/api/classes` — class sessions, seat payments, payment holds, and bookings
+- `/api/admin` — admin dashboard and product, class, and order management
+- `/api/orders/cashfree/webhook` — Cashfree payment/refund webhook
+- `/api/courier-updates` — Shiprocket tracking webhook
+
+Admin API routes require an authenticated admin account. Customer order and profile endpoints are authenticated and scoped to the signed-in customer.
+
+## Payments and optional integrations
+
+### Cashfree
+
+Set `CASHFREE_ENV=sandbox`, `CASHFREE_CLIENT_ID`, and `CASHFREE_CLIENT_SECRET` in `server/.env` to enable sandbox payments. The same Cashfree integration handles product checkout and class-seat booking. The server creates the payment order and verifies payment status with Cashfree; a browser redirect alone does not confirm payment.
+
+For webhooks, configure the Cashfree dashboard to send events to the public HTTPS address ending in `/api/orders/cashfree/webhook`, then set that address in `CASHFREE_WEBHOOK_URL`. Local webhook testing requires an HTTPS tunnel or deployed server. Use production credentials and a production webhook URL only after merchant setup and verification.
+
+Product payment attempts reserve inventory temporarily and are cleaned up by a server-side periodic task. Class seat holds are released when class availability is requested after their hold expires. Refunds for eligible paid-order cancellations and accepted returns are initiated through Cashfree; provider refund processing can remain pending and should be monitored.
+
+### Cloudinary
+
+Set the three `CLOUDINARY_*` server variables to enable Cloudinary product image uploads. Keep credentials on the server. Existing images under `/uploads` remain available.
+
+### Shiprocket
+
+Set the `SHIPROCKET_*` credentials and pickup settings to use courier discovery and shipment creation from Admin Orders. Configure the provider's tracking webhook to call `/api/courier-updates` and use the same secret for `SHIPROCKET_WEBHOOK_TOKEN`. Shipment creation is restricted to paid orders.
+
+### WhatsApp Business
+
+Set the `WHATSAPP_*` server variables and configure approved utility templates before enabling notifications. The order template requires three body parameters; the class template requires four. Customers must opt in before automated messages are sent. Provider access tokens must remain server-side.
+
+## Security
+
+- Helmet security headers, an explicit CORS origin, request-size limits, and centralized error handling.
+- CSRF protection for cookie-backed authentication mutations and browser-origin checks.
+- Hashed refresh-token records, refresh-token rotation, session revocation, and short-lived access tokens.
+- Authentication and rate limits, including account lockout after repeated failed logins.
+- Server-side validation and role checks for customer and admin operations.
+- Cashfree webhook HMAC verification and provider-side payment verification.
+
+Use HTTPS, strong unique production secrets, exact allowed origins, backups, monitoring, and persistent shared rate-limit storage when deploying multiple API instances. This project is not a security audit; review the deployment and integrations before production use.
+
+## Tests
+
+From `server/`:
+
+```sh
 npm test
 ```
-The test suite covers CSRF rejection, refresh-token rotation, repeated-login lockout, and two concurrent users attempting to reserve the same seat. The concurrent reservation test expects exactly one HTTP 201 and one HTTP 409 response. Tests run against an ephemeral in-memory MongoDB instance and do not touch your development database.
 
-## Customer profile, saved addresses, order tracking and Cashfree (added)
+Tests use Node's test runner, Supertest, and an in-memory MongoDB instance. The first run may need network access to download the MongoDB test binary.
 
-### Customer features
-- `/profile`: edit display name and phone; save up to 3 delivery addresses; add, edit, delete, and set a default address.
-- Product checkout requires a valid delivery address, lets the customer choose a saved address or add a new one, and accepts Cashfree online payment only.
-- An unpaid Cashfree checkout is a temporary payment attempt, not an order. Stock is reserved for up to 20 minutes; a confirmed payment creates the order, while a failed or expired attempt releases stock. Only paid online orders appear in customer order history.
-- `/orders`: view order items, totals, payment status, delivery-address snapshot, status timeline, courier/tracking details, and update the delivery address while the order is still pending/paid/processing and before shipment.
-- An order stores a snapshot of its delivery address. Updating a saved address later does not rewrite an existing order's address.
-- `/support`: get help with orders, payments, products, class bookings, and other questions. Configure `VITE_SUPPORT_WHATSAPP`, `VITE_SUPPORT_EMAIL`, and `VITE_SUPPORT_PHONE` in `client/.env`; restart the client after changing these values.
+To build the client, run from `client/`:
 
-### Cashfree setup
-1. Create/sign in to a Cashfree merchant account and switch to **Test/Sandbox** mode.
-2. In the Payment Gateway API keys section, generate the sandbox Client ID (App ID) and Client Secret. These are separate from Payouts credentials.
-3. Set `CASHFREE_ENV=sandbox`, `CASHFREE_CLIENT_ID`, and `CASHFREE_CLIENT_SECRET` in `server/.env`, then restart the backend. Keep the secret out of `client/.env`, frontend code, source control, and chat.
-4. Start the server and client. Test a product checkout or create a priced class in Admin and book a seat from `/classes`. Complete checkout using a payment method/test details provided in Cashfree's current sandbox documentation. Product checkout returns to `/orders`; class checkout returns to `/classes`. The backend verifies payment status with Cashfree before confirming the order or seat.
-5. To test webhooks locally, expose the backend at port 5000 through a public HTTPS tunnel or deploy it. Configure that exact URL plus `/api/orders/cashfree/webhook` in the Cashfree dashboard, enable payment and refund status events, and set the same URL as `CASHFREE_WEBHOOK_URL`; restart the backend. Leave it blank if you are testing only the browser-return verification.
-6. For live payments, switch to `CASHFREE_ENV=production`, use production Payment Gateway credentials, configure the production HTTPS webhook, and verify your merchant account before accepting transactions.
-
-The server creates Cashfree payment orders, keeps provider secrets server-side, verifies webhook HMAC signatures against the raw request body, and confirms payments against Cashfree before marking an order paid or a class seat booked. A browser redirect alone is never considered proof of payment. Class seats are temporarily held for 20 minutes during checkout; expired holds are released when class availability is requested. Cashfree API/version details can change; verify current requirements in the Cashfree PG integration documentation before production rollout.
-
-### Admin fulfilment
-- The Admin dashboard now includes Order fulfilment controls to update order status and add courier, tracking number, HTTPS tracking URL, and a customer-facing note.
-- Status changes are restricted to admins. Cashfree orders cannot be manually marked paid through the admin status endpoint; provider verification is required.
-- Address changes are disabled once an order is shipped or enters a non-editable status.
-- Admin cancellation of a paid Cashfree order first initiates an idempotent Cashfree refund. If Cashfree rejects/fails the request, the order remains active and stock is unchanged so an Admin can retry. A pending Cashfree refund is recorded separately from a completed refund.
-- Customers can request a product return after delivery; an Admin reviews the request, marks approved items received, and the backend then initiates the Cashfree refund. Return and refund status are visible in Admin and customer order history.
-- Admins must set each product as non-returnable or configure its 1–90 day return window when creating or editing it. The product detail page shows the policy. Returnability and the window are saved to each order item at checkout, so later product-policy edits do not change existing orders. A whole-order return is unavailable if any item is non-returnable or outside its return window. Products and historical order items without a saved return window are treated as non-returnable.
-
-### Shiprocket setup
-1. Create a Shiprocket API user with access to orders, courier, and shipment modules.
-2. Set `SHIPROCKET_EMAIL`, `SHIPROCKET_PASSWORD`, `SHIPROCKET_PICKUP_LOCATION`, and `SHIPROCKET_PICKUP_POSTCODE` in `server/.env`. The pickup location name must already exist in Shiprocket.
-3. In Admin Orders, enter the actual packaged weight (kg) and dimensions (cm), find available couriers, choose one, and create its shipment/label. Shipment creation is restricted to paid orders.
-4. Configure Shiprocket's tracking webhook to call `https://<your-backend-host>/api/courier-updates` and set the same secret in `SHIPROCKET_WEBHOOK_TOKEN` as the webhook's `x-api-key`. Tracking events update the order status and delivery time.
-5. Review [Shiprocket's API documentation](https://apidocs.shiprocket.in/) and test with your account before enabling live fulfillment.
-
-### WhatsApp Business setup
-1. Configure a WhatsApp Cloud API phone number and a long-lived server-side access token.
-2. Create and approve utility templates for order and class confirmations. The order template must have three body parameters (order reference, items, total); the class template must have four (class, seats, start time, total).
-3. Set `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_ORDER_TEMPLATE`, `WHATSAPP_CLASS_TEMPLATE`, and `WHATSAPP_TEMPLATE_LANGUAGE` in `server/.env`.
-4. Customers must explicitly opt in from their profile before automated WhatsApp messages are sent. Delivery status is stored; missing configuration or provider rejection is reported in the Admin order details. Never put access tokens in client environment files.
-5. Refer to [WhatsApp Cloud API message documentation](https://developers.facebook.com/documentation/business-messaging/whatsapp/messages/send-messages) for template and opt-in requirements.
-
-### Payment and inventory notes
-- Prices and totals are recalculated from the database; client-provided prices are ignored.
-- Product stock is temporarily reserved during Cashfree checkout. Failed payments release the reservation, and the backend periodically expires unpaid attempts after 20 minutes. If a late payment arrives after stock release, the system attempts to reserve the items again; if unavailable, the payment requires refund follow-up.
-- Cashfree refunds are initiated for paid Admin cancellations and accepted returns; monitor provider refund status until it completes. Chargeback handling and SMS/email notifications are not included.
-- See [Cashfree's Create Refund API](https://www.cashfree.com/docs/api-reference/payments/latest/refunds/create-refund) for provider-side refund constraints and statuses.
+```sh
+npm run build
+```

@@ -26,12 +26,14 @@ export default function App() {
           <Route path="cart" element={<Cart />} />
           <Route path="profile" element={<Profile />} />
           <Route path="orders" element={<Orders />} />
+          <Route path="orders/:id" element={<Orders />} />
           <Route path="support" element={<Support />} />
           <Route path="login" element={<Auth mode="login" />} />
           <Route path="register" element={<Auth mode="register" />} />
           <Route path="admin" element={<Admin />} />
           <Route path="admin/products" element={<Admin />} />
           <Route path="admin/classes" element={<Admin />} />
+          <Route path="admin/bookings" element={<Admin />} />
           <Route path="admin/orders" element={<Admin />} />
           <Route
             path="*"

@@ -7,10 +7,11 @@ import {
   Flower2,
   House,
   Store,
-  // CalendarDays,
+  CalendarDays,
   ShieldCheck,
   Package,
   LogOut,
+  MessageCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "../features/auth/AuthContext";
@@ -21,6 +22,14 @@ export default function Layout() {
   const { count } = useCart();
   const { pathname, hash } = useLocation();
   const isAuthPage = pathname === "/login" || pathname === "/register";
+  const hideFooterOnMobile =
+    pathname === "/shop" ||
+    pathname === "/classes" ||
+    pathname === "/orders" ||
+    pathname === "/profile" ||
+    pathname === "/support" ||
+    pathname === "/cart" ||
+    pathname.startsWith("/products/");
   useEffect(() => {
     if (hash !== "#story") return;
     const frame = window.requestAnimationFrame(() => {
@@ -55,11 +64,11 @@ export default function Layout() {
             <NavLink to="/shop" onClick={closeMenu}>
               <Store size={16} /> Shop
             </NavLink>
-            {/*
+
             <NavLink to="/classes" onClick={closeMenu}>
               <CalendarDays size={16} /> Sessions
             </NavLink>
-            */}
+
             {user?.role === "admin" && (
               <NavLink to="/admin" onClick={closeMenu}>
                 <ShieldCheck size={16} /> Admin
@@ -81,6 +90,13 @@ export default function Layout() {
                 <NavLink to="/profile" onClick={closeMenu}>
                   <UserRound size={16} /> Profile
                 </NavLink>
+                <NavLink
+                  to="/support"
+                  className="mobile-support-link"
+                  onClick={closeMenu}
+                >
+                  <MessageCircle size={16} /> Contact support
+                </NavLink>
                 <button
                   className="nav-text"
                   onClick={() => {
@@ -93,18 +109,31 @@ export default function Layout() {
               </>
             )}
             {!user && (
-              <Link to="/login" onClick={closeMenu}>
-                <UserRound size={16} /> Sign in
-              </Link>
+              <>
+                <Link to="/login" onClick={closeMenu}>
+                  <UserRound size={16} /> Sign in
+                </Link>
+                <NavLink
+                  to="/support"
+                  className="mobile-support-link"
+                  onClick={closeMenu}
+                >
+                  <MessageCircle size={16} /> Contact support
+                </NavLink>
+              </>
             )}
           </nav>
         </header>
       )}
       <main>
-        <Outlet />
+        <div key={pathname} className="page-transition">
+          <Outlet />
+        </div>
       </main>
       {!isAuthPage && (
-        <footer className="footer">
+        <footer
+          className={`footer${hideFooterOnMobile ? " mobile-hidden-footer" : ""}`}
+        >
           <div className="brand footer-brand">
             <Flower2 />
             <span>

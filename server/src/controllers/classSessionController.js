@@ -12,6 +12,7 @@ import { sendClassWhatsApp } from "../services/whatsappService.js";
 
 const holdDurationMs = 20 * 60 * 1000;
 const terminalPaymentStatuses = new Set([
+  "NOT_ATTEMPTED",
   "FAILED",
   "USER_DROPPED",
   "CANCELLED",
@@ -200,6 +201,40 @@ export const listClassSessions = asyncHandler(async (_req, res) => {
   });
 });
 
+export const listAdminClassSessions = asyncHandler(async (req, res) => {
+  await releaseExpiredHolds();
+  const search = String(req.query.search || "").trim().slice(0, 100);
+  const view = ["all", "past", "upcoming"].includes(req.query.view)
+    ? req.query.view
+    : "upcoming";
+  const filter = {};
+  const now = new Date();
+  if (view === "past") filter.startsAt = { $lt: now };
+  if (view === "upcoming") filter.startsAt = { $gte: now };
+  if (search) {
+    const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    filter.$or = ["title", "instructorName", "description"].map((field) => ({
+      [field]: { $regex: escapedSearch, $options: "i" },
+    }));
+  }
+  const sessions = await ClassSession.find(filter)
+    .select(
+      "title description instructorName price startsAt durationMinutes seats",
+    )
+    .sort({ startsAt: view === "upcoming" ? 1 : -1 })
+    .lean();
+  res.json({
+    success: true,
+    sessions: sessions.map((session) => ({
+      ...session,
+      seats: session.seats.map(({ seatNumber, status }) => ({
+        seatNumber,
+        status,
+      })),
+    })),
+  });
+});
+
 export const myClassPaymentHolds = asyncHandler(async (req, res) => {
   await releaseExpiredHolds();
   const sessions = await ClassSession.find({
@@ -207,7 +242,7 @@ export const myClassPaymentHolds = asyncHandler(async (req, res) => {
     "seats.status": "pending_payment",
     "seats.holdExpiresAt": { $gt: new Date() },
   })
-    .select("title startsAt seats")
+    .select("title price startsAt seats")
     .sort({ startsAt: 1 })
     .lean();
   const holds = sessions.flatMap((session) => {
@@ -228,6 +263,7 @@ export const myClassPaymentHolds = asyncHandler(async (req, res) => {
       return {
         classId: session._id,
         classTitle: session.title,
+        price: session.price,
         startsAt: session.startsAt,
         paymentOrderId,
         seatNumbers: seats.map((seat) => seat.seatNumber),
@@ -469,12 +505,31 @@ async function createClassPayment(
   const savedPhone =
     req.user.addresses.find((address) => address.isDefault)?.phone ||
     req.user.addresses[0]?.phone;
-  const phone = String(req.user.phone || savedPhone || "").replace(/\D/g, "");
-  if (phone.length < 10 || phone.length > 15)
+  const email = String(req.body.email ?? req.user.email ?? "")
+    .trim()
+    .toLowerCase();
+  if (
+    email.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  )
     throw new AppError(
-      "Add a valid phone number in your profile before booking a class",
+      "Enter a valid email address",
       400,
-      "PHONE_REQUIRED",
+      "INVALID_BOOKING_EMAIL",
+    );
+  const phoneInput = String(
+    req.body.phone ?? req.user.phone ?? savedPhone ?? "",
+  ).trim();
+  const phone = phoneInput.replace(/\D/g, "");
+  if (
+    !/^\+?[0-9 ().-]{8,20}$/.test(phoneInput) ||
+    phone.length < 10 ||
+    phone.length > 15
+  )
+    throw new AppError(
+      "Enter a valid mobile number with 10 to 15 digits",
+      400,
+      "INVALID_BOOKING_PHONE",
     );
   await releaseExpiredHolds();
 
@@ -551,6 +606,7 @@ async function createClassPayment(
   const returnQuery = legacySeatNumber
     ? `seat=${encodeURIComponent(legacySeatNumber)}`
     : `order_id=${encodeURIComponent(paymentOrderId)}`;
+  const returnUrl = `${process.env.CLIENT_ORIGIN || "http://localhost:5173"}/classes?payment=return&class_id=${classId}&${returnQuery}`;
   try {
     const cf = await cashfreeRequest("/orders", {
       body: {
@@ -561,11 +617,11 @@ async function createClassPayment(
         customer_details: {
           customer_id: req.user._id.toString(),
           customer_name: req.user.name,
-          customer_email: req.user.email,
+          customer_email: email,
           customer_phone: phone.slice(-10),
         },
         order_meta: {
-          return_url: `${process.env.CLIENT_ORIGIN || "http://localhost:5173"}/classes?payment=return&class_id=${classId}&${returnQuery}`,
+          return_url: returnUrl,
           notify_url: process.env.CASHFREE_WEBHOOK_URL || undefined,
         },
       },
@@ -605,6 +661,7 @@ async function createClassPayment(
         expiresAt: holdExpiresAt,
         paymentOrderId,
         seatNumbers,
+        returnUrl,
       },
     });
   } catch (error) {
@@ -801,6 +858,79 @@ export const verifyClassOrderPayment = asyncHandler(async (req, res) => {
   );
 });
 
+export const cancelClassOrderPayment = asyncHandler(async (req, res) => {
+  const { classId, paymentOrderId } = req.params;
+  validClassId(classId);
+  if (!/^CLS[a-f0-9]{32}$/i.test(paymentOrderId))
+    throw new AppError("Invalid class payment ID", 400, "INVALID_PAYMENT_ID");
+
+  const session = await ClassSession.findOne({
+    _id: classId,
+    "seats.paymentOrderId": paymentOrderId,
+  }).select("title price startsAt seats");
+  if (!session)
+    throw new AppError("Class payment not found", 404, "CLASS_NOT_FOUND");
+  const orderSeats = session.seats.filter(
+    (seat) => seat.paymentOrderId === paymentOrderId,
+  );
+  if (
+    !orderSeats.length ||
+    orderSeats.some(
+      (seat) => String(seat.bookedBy) !== String(req.user._id),
+    )
+  )
+    throw new AppError("Seat payment not found", 404, "BOOKING_NOT_FOUND");
+  if (orderSeats.every((seat) => seat.status === "booked"))
+    return res.json({
+      success: true,
+      paymentStatus: "paid",
+      booking: {
+        classTitle: session.title,
+        seatNumbers: orderSeats.map((seat) => seat.seatNumber),
+      },
+    });
+  if (orderSeats.some((seat) => seat.status !== "pending_payment"))
+    throw new AppError(
+      "No active payment is available for these seats",
+      409,
+      "NO_ACTIVE_PAYMENT",
+    );
+
+  const paymentsResponse = await cashfreeRequest(
+    `/orders/${encodeURIComponent(paymentOrderId)}/payments`,
+    { method: "GET" },
+  );
+  const payments = Array.isArray(paymentsResponse)
+    ? paymentsResponse
+    : paymentsResponse.data || [];
+  if (payments.some((payment) => payment.payment_status === "SUCCESS"))
+    return res.json(
+      await verifyClassPayment(req, classId, paymentOrderId, ""),
+    );
+
+  if (
+    payments.some(
+      (payment) => !terminalPaymentStatuses.has(payment.payment_status),
+    )
+  )
+    throw new AppError(
+      "Cashfree is still processing this payment. The seats remain held until the cancellation is confirmed.",
+      409,
+      "PAYMENT_CANCELLATION_PENDING",
+    );
+
+  await releaseFailedPayment(session, paymentOrderId);
+  await releaseClassPaymentHold(req.user._id, paymentOrderId);
+  res.json({
+    success: true,
+    paymentStatus: "cancelled",
+    booking: {
+      classTitle: session.title,
+      seatNumbers: orderSeats.map((seat) => seat.seatNumber),
+    },
+  });
+});
+
 export const resumeClassOrderPayment = asyncHandler(async (req, res) => {
   const { classId, paymentOrderId } = req.params;
   if (!/^CLS[a-f0-9]{32}$/i.test(paymentOrderId))
@@ -876,6 +1006,7 @@ export const resumeClassOrderPayment = asyncHandler(async (req, res) => {
       paymentSessionId: seats[0].paymentSessionId,
       environment: cashfreeEnvironment(),
       expiresAt: seats[0].holdExpiresAt,
+      returnUrl: `${process.env.CLIENT_ORIGIN || "http://localhost:5173"}/classes?payment=return&class_id=${classId}&order_id=${encodeURIComponent(paymentOrderId)}`,
     },
   });
 });

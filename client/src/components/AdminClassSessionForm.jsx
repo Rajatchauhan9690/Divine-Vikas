@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Pencil,
+  Search,
   Trash2,
   X,
 } from "lucide-react";
@@ -41,12 +42,19 @@ export default function AdminClassSessionForm() {
   const [toast, setToast] = useState(null);
   const [seatCountError, setSeatCountError] = useState("");
   const [sessions, setSessions] = useState([]);
+  const [sessionSearch, setSessionSearch] = useState("");
+  const [sessionView, setSessionView] = useState("upcoming");
   const [sessionPrices, setSessionPrices] = useState({});
   const [sessionPage, setSessionPage] = useState(1);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState("");
   const [updatingSession, setUpdatingSession] = useState("");
   const [deletingSession, setDeletingSession] = useState("");
+  const sessionsRequest = useRef(null);
+  const sessionSearchRef = useRef(sessionSearch);
+  const sessionViewRef = useRef(sessionView);
+  sessionSearchRef.current = sessionSearch.trim();
+  sessionViewRef.current = sessionView;
   const sessionFormRef = useRef(null);
   const dismissToast = useCallback(() => setToast(null), []);
   useEffect(() => {
@@ -57,9 +65,18 @@ export default function AdminClassSessionForm() {
       });
   }, [showCreateForm, editingSessionId]);
 
-  async function loadSessions() {
+  async function loadSessions(
+    search = sessionSearchRef.current,
+    view = sessionViewRef.current,
+  ) {
+    sessionsRequest.current?.abort();
+    const controller = new AbortController();
+    sessionsRequest.current = controller;
     try {
-      const { data } = await api.get("/classes");
+      const { data } = await api.get("/admin/classes", {
+        params: { search, view },
+        signal: controller.signal,
+      });
       const loadedSessions = data.sessions || [];
       setSessions(loadedSessions);
       setSessionPage((page) =>
@@ -78,18 +95,31 @@ export default function AdminClassSessionForm() {
       }));
       return true;
     } catch (error) {
+      if (controller.signal.aborted) return true;
       setToast({
         type: "error",
         text:
           error.response?.data?.message ||
-          "Could not load upcoming class sessions.",
+          "Could not load class sessions.",
       });
       return false;
+    } finally {
+      if (sessionsRequest.current === controller) sessionsRequest.current = null;
     }
   }
   useEffect(() => {
-    loadSessions();
-  }, []);
+    const timer = window.setTimeout(
+      () => {
+        setSessionPage(1);
+        loadSessions(sessionSearch.trim(), sessionView);
+      },
+      300,
+    );
+    return () => {
+      window.clearTimeout(timer);
+      sessionsRequest.current?.abort();
+    };
+  }, [sessionSearch, sessionView]);
   const update = (event) => {
     if (event.target.name === "seatCount") {
       const { value } = event.target;
@@ -270,21 +300,50 @@ export default function AdminClassSessionForm() {
           <h2>Class sessions</h2>
           <p>Create a session and generate its seats automatically.</p>
         </div>
-        <button
-          type="button"
-          className={`btn ${showCreateForm ? "btn-admin-cancel" : "btn-dark"}`}
-          onClick={() => {
-            if (showCreateForm) {
-              setShowCreateForm(false);
-              setEditingSessionId("");
-              setValues(initialValues);
-              setSeatCountError("");
-            } else setShowCreateForm(true);
-          }}
-        >
-          {showCreateForm ? <X size={16} /> : <CalendarPlus size={16} />}
-          {showCreateForm ? "Cancel" : "Add class"}
-        </button>
+        <div className="admin-class-session-header-actions">
+          <div className="admin-class-session-controls">
+            <label className="admin-order-search">
+              <Search size={18} aria-hidden="true" />
+              <input
+                type="search"
+                value={sessionSearch}
+                onChange={(event) => setSessionSearch(event.target.value)}
+                placeholder="Search title or instructor"
+                aria-label="Search class sessions"
+              />
+            </label>
+            <button
+              type="button"
+              className={`btn btn-outline admin-session-toggle ${sessionView === "past" ? "is-past" : ""}`}
+              aria-pressed={sessionView === "past"}
+              aria-controls="admin-class-session-list"
+              onClick={() =>
+                setSessionView((view) =>
+                  view === "past" ? "upcoming" : "past",
+                )
+              }
+            >
+              <span key={sessionView} className="admin-session-toggle-label">
+                {sessionView === "past" ? "Upcoming sessions" : "Past sessions"}
+              </span>
+            </button>
+          </div>
+          <button
+            type="button"
+            className={`btn ${showCreateForm ? "btn-admin-cancel" : "btn-dark"}`}
+            onClick={() => {
+              if (showCreateForm) {
+                setShowCreateForm(false);
+                setEditingSessionId("");
+                setValues(initialValues);
+                setSeatCountError("");
+              } else setShowCreateForm(true);
+            }}
+          >
+            {showCreateForm ? <X size={16} /> : <CalendarPlus size={16} />}
+            {showCreateForm ? "Cancel" : "Add class"}
+          </button>
+        </div>
       </div>
       <AdminToast toast={toast} onDismiss={dismissToast} />
       {showCreateForm && (
@@ -403,13 +462,12 @@ export default function AdminClassSessionForm() {
         </button>
       </form>
       )}
-      {sessions.length > 0 && (
-        <div className="admin-unpriced-sessions">
-          <h3>Manage upcoming sessions</h3>
-          <p>
-            Sessions with held or booked seats cannot be deleted. Unpriced
-            sessions need a price before customers can book.
-          </p>
+      <div className="admin-unpriced-sessions">
+          <div
+            id="admin-class-session-list"
+            className="admin-class-session-list"
+            key={sessionView}
+          >
           {visibleSessions.map((session) => (
             <div className="admin-class-session-card" key={session._id}>
               <div className="admin-class-session-card-header">
@@ -433,6 +491,9 @@ export default function AdminClassSessionForm() {
                       {session.instructorName
                         ? ` · ${session.instructorName}`
                         : ""}
+                      {new Date(session.startsAt) <= new Date()
+                        ? " · Past session"
+                        : " · Upcoming"}
                     </small>
                   </summary>
                   {Number(session.price) <= 0 && (
@@ -459,7 +520,10 @@ export default function AdminClassSessionForm() {
                       </label>
                       <button
                         className="btn btn-admin-save"
-                        disabled={updatingSession === session._id}
+                        disabled={
+                          updatingSession === session._id ||
+                          new Date(session.startsAt) <= new Date()
+                        }
                       >
                         {updatingSession === session._id
                           ? "Saving…"
@@ -467,9 +531,6 @@ export default function AdminClassSessionForm() {
                       </button>
                     </form>
                   )}
-                  <p className="admin-class-delete-hint">
-                    Sessions with held or booked seats cannot be deleted.
-                  </p>
                 </details>
                 <div className="admin-class-row-actions">
                   <button
@@ -477,15 +538,20 @@ export default function AdminClassSessionForm() {
                     className="btn btn-outline admin-class-edit"
                     aria-label={`Edit ${session.title}`}
                     title={
-                      session.seats?.some((seat) =>
+                      new Date(session.startsAt) <= new Date()
+                        ? "Past sessions cannot be edited."
+                        : session.seats?.some((seat) =>
                         ["pending_payment", "booked"].includes(seat.status),
                       )
                         ? "Sessions with held or booked seats cannot be edited."
                         : "Edit class session"
                     }
-                    disabled={session.seats?.some((seat) =>
-                      ["pending_payment", "booked"].includes(seat.status),
-                    )}
+                    disabled={
+                      new Date(session.startsAt) <= new Date() ||
+                      session.seats?.some((seat) =>
+                        ["pending_payment", "booked"].includes(seat.status),
+                      )
+                    }
                     onClick={() => editSession(session)}
                   >
                     <Pencil size={15} />
@@ -498,8 +564,15 @@ export default function AdminClassSessionForm() {
                         ? `Deleting ${session.title}`
                         : `Delete ${session.title}`
                     }
-                    title="Delete class session"
-                    disabled={deletingSession === session._id}
+                    title={
+                      new Date(session.startsAt) <= new Date()
+                        ? "Past sessions cannot be deleted."
+                        : "Delete class session"
+                    }
+                    disabled={
+                      deletingSession === session._id ||
+                      new Date(session.startsAt) <= new Date()
+                    }
                     onClick={() => deleteSession(session)}
                   >
                     <Trash2 size={15} />
@@ -508,6 +581,13 @@ export default function AdminClassSessionForm() {
               </div>
             </div>
           ))}
+          {!sessions.length && (
+            <p className="table-empty">
+              {sessionSearch.trim()
+                ? "No class sessions match your search."
+                : `No ${sessionView} class sessions.`}
+            </p>
+          )}
           {sessions.length > 0 && (
             <div className="admin-pagination">
               <button
@@ -529,8 +609,8 @@ export default function AdminClassSessionForm() {
               </button>
             </div>
           )}
-        </div>
-      )}
+          </div>
+      </div>
     </section>
   );
 }

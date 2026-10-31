@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
+import { Minus, Plus, Trash2, ShoppingBag, ArrowLeft } from "lucide-react";
 import { useCart } from "../features/cart/CartContext";
 import { useAuth } from "../features/auth/AuthContext";
 import { api } from "../services/api";
@@ -145,6 +145,9 @@ export default function Cart() {
   }
   return (
     <section className="section cart-page">
+      <Link className="cart-back-link" to="/shop">
+        <ArrowLeft size={16} /> Back to shop
+      </Link>
       <span className="eyebrow">YOUR SELECTION</span>
       <h1>
         Your <em>bag.</em>
