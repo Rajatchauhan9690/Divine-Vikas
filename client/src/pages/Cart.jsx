@@ -1,9 +1,11 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Minus, Plus, Trash2, ShoppingBag, ArrowLeft } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useCart } from "../features/cart/CartContext";
 import { useAuth } from "../features/auth/AuthContext";
 import { api } from "../services/api";
 import { useEffect, useState } from "react";
+import CashfreeCustomCheckout from "../components/CashfreeCustomCheckout";
 const emptyAddress = {
   label: "Home",
   fullName: "",
@@ -16,40 +18,15 @@ const emptyAddress = {
   country: "India",
   landmark: "",
 };
-function launchCashfree(sessionId, environment) {
-  return new Promise((resolve, reject) => {
-    const go = () => {
-      try {
-        const cf = window.Cashfree({
-          mode: environment === "production" ? "production" : "sandbox",
-        });
-        Promise.resolve(
-          cf.checkout({ paymentSessionId: sessionId, redirectTarget: "_self" }),
-        )
-          .then(resolve)
-          .catch(reject);
-      } catch (e) {
-        reject(e);
-      }
-    };
-    if (window.Cashfree) {
-      go();
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
-    script.onload = go;
-    script.onerror = () =>
-      reject(new Error("Unable to load Cashfree checkout. Please try again."));
-    document.head.appendChild(script);
-  });
-}
 export default function Cart() {
   const { items, remove, change, total } = useCart();
   const { user } = useAuth();
   const nav = useNavigate();
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [payment, setPayment] = useState(null);
+  const [checkoutActive, setCheckoutActive] = useState(false);
+  const [showPaymentExitConfirm, setShowPaymentExitConfirm] = useState(false);
   const [addresses, setAddresses] = useState([]);
   const [selected, setSelected] = useState("");
   const [address, setAddress] = useState(emptyAddress);
@@ -57,6 +34,14 @@ export default function Cart() {
   const [whatsappOptIn, setWhatsappOptIn] = useState(false);
   const [savedWhatsappOptIn, setSavedWhatsappOptIn] = useState(false);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  useEffect(() => {
+    if (!showPaymentExitConfirm) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setShowPaymentExitConfirm(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showPaymentExitConfirm]);
   useEffect(() => {
     if (user)
       api
@@ -90,6 +75,10 @@ export default function Cart() {
     e.preventDefault();
     if (!user) return nav("/login", { state: { from: "/cart" } });
     if (!items.length) return;
+    if (payment) {
+      setCheckoutActive(true);
+      return;
+    }
     if (!profileLoaded) {
       setMessage(
         "Your profile preference could not be loaded. Refresh before continuing to checkout.",
@@ -125,14 +114,18 @@ export default function Cart() {
       });
       if (!data.payment?.paymentSessionId)
         throw new Error("Cashfree did not return a payment session.");
-      setMessage(
-        "Your items are temporarily reserved while payment is pending.",
-      );
-      await launchCashfree(
-        data.payment.paymentSessionId,
-        data.payment.environment,
-      );
-      return;
+      setPayment({
+        ...data.payment,
+        attemptId: data.attemptId,
+        total,
+        phone: ship.phone,
+        cartProductIds: items.map((item) => item._id),
+        summaryDescription: items
+          .map((item) => `${item.name} × ${item.qty}`)
+          .join(", "),
+      });
+      setCheckoutActive(true);
+      setMessage("");
     } catch (e) {
       setMessage(
         e.response?.data?.message ||
@@ -143,9 +136,104 @@ export default function Cart() {
       setBusy(false);
     }
   }
+  async function verifyPayment() {
+    const { data } = await api.post(
+      `/orders/${payment.attemptId}/verify-payment`,
+    );
+    if (data.paymentStatus === "paid" && data.order) {
+      payment.cartProductIds.forEach((productId) => remove(productId));
+      setPayment(null);
+      setCheckoutActive(false);
+      nav("/orders", { replace: true });
+    } else if (
+      data.paymentStatus === "failed" ||
+      data.paymentStatus === "expired"
+    ) {
+      setPayment(null);
+      setCheckoutActive(false);
+      setMessage(
+        data.paymentStatus === "failed"
+          ? "Payment was not completed. Your items are still in your bag; please try again."
+          : "The payment session expired. Your items are still in your bag; please try again.",
+      );
+    } else if (data.paymentStatus === "refund_required") {
+      setPayment(null);
+      setCheckoutActive(false);
+      setMessage(
+        "Payment succeeded but could not be matched to available stock. Please contact support.",
+      );
+    }
+    return data.paymentStatus;
+  }
   return (
     <section className="section cart-page">
-      <Link className="cart-back-link" to="/shop">
+      {checkoutActive &&
+        payment &&
+        createPortal(
+          <CashfreeCustomCheckout
+            payment={payment}
+            sessionTitle="Your fragrance order"
+            price={payment.total}
+            totalAmount={payment.total}
+            checkoutTitle="Complete your order"
+            summaryLabel="ORDER SUMMARY"
+            summaryDescription={payment.summaryDescription}
+            expiryLabel="Payment session expires"
+            pendingMessage="Payment is processing. Your items are reserved while Cashfree confirms it."
+            unconfirmedMessage="We could not confirm payment yet. Your items are reserved; please wait and try again."
+            email={user?.email || ""}
+            phone={payment.phone}
+            onBack={() => setShowPaymentExitConfirm(true)}
+            onPaymentComplete={verifyPayment}
+          />,
+          document.body,
+        )}
+      {showPaymentExitConfirm &&
+        createPortal(
+          <div className="class-exit-overlay">
+            <section
+              className="class-exit-dialog"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="cart-payment-exit-title"
+              aria-describedby="cart-payment-exit-description"
+            >
+              <div className="class-exit-icon" aria-hidden="true">
+                <ShoppingBag size={23} />
+              </div>
+              <span className="eyebrow">SECURE CHECKOUT</span>
+              <h2 id="cart-payment-exit-title">Leave payment?</h2>
+              <p id="cart-payment-exit-description">
+                You can continue paying now or exit checkout and return to your
+                bag.
+              </p>
+              <div className="class-exit-actions">
+                <button
+                  type="button"
+                  className="btn class-flow-button class-flow-button--green"
+                  onClick={() => setShowPaymentExitConfirm(false)}
+                >
+                  Continue payment
+                </button>
+                <button
+                  type="button"
+                  className="btn class-flow-button class-flow-button--danger"
+                  onClick={() => {
+                    setShowPaymentExitConfirm(false);
+                    setCheckoutActive(false);
+                  }}
+                >
+                  Exit payment
+                </button>
+              </div>
+            </section>
+          </div>,
+          document.body,
+        )}
+      <Link
+        className="cart-back-link btn class-flow-button class-flow-button--gold"
+        to="/shop"
+      >
         <ArrowLeft size={16} /> Back to shop
       </Link>
       <span className="eyebrow">YOUR SELECTION</span>
@@ -284,40 +372,50 @@ export default function Cart() {
                 </>
               )}
             </div>
-            {items.map((i) => (
-              <article className="cart-item" key={i._id}>
-                {i.image && <img src={i.image} alt={i.name} />}
-                <div className="cart-item-info">
-                  <h3>{i.name}</h3>
-                  <p>₹{i.price}</p>
-                  <div className="qty-control">
-                    <button
-                      type="button"
-                      onClick={() => change(i._id, i.qty - 1)}
-                      aria-label="Decrease quantity"
-                    >
-                      <Minus size={14} />
-                    </button>
-                    <span>{i.qty}</span>
-                    <button
-                      type="button"
-                      onClick={() => change(i._id, i.qty + 1)}
-                      aria-label="Increase quantity"
-                    >
-                      <Plus size={14} />
-                    </button>
+            <div
+              className="cart-product-list"
+              role="region"
+              aria-label="Products in your cart"
+              tabIndex={0}
+            >
+              {items.map((i) => (
+                <article className="cart-item" key={i._id}>
+                  {i.image && <img src={i.image} alt={i.name} />}
+                  <div className="cart-item-info">
+                    <h3>{i.name}</h3>
+                    <p>₹{i.price}</p>
+                    <div className="qty-control">
+                      <button
+                        type="button"
+                        disabled={Boolean(payment)}
+                        onClick={() => change(i._id, i.qty - 1)}
+                        aria-label="Decrease quantity"
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <span>{i.qty}</span>
+                      <button
+                        type="button"
+                        disabled={Boolean(payment)}
+                        onClick={() => change(i._id, i.qty + 1)}
+                        aria-label="Increase quantity"
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <button
-                  type="button"
-                  className="icon-button"
-                  onClick={() => remove(i._id)}
-                  aria-label={`Remove ${i.name}`}
-                >
-                  <Trash2 size={17} />
-                </button>
-              </article>
-            ))}
+                  <button
+                    type="button"
+                    className="icon-button"
+                    disabled={Boolean(payment)}
+                    onClick={() => remove(i._id)}
+                    aria-label={`Remove ${i.name}`}
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                </article>
+              ))}
+            </div>
           </div>
           <aside className="order-summary">
             <h2>Order summary</h2>
@@ -352,8 +450,13 @@ export default function Cart() {
               messaging is configured.
             </label>
             {message && <p className="notice error">{message}</p>}
-            <button className="btn btn-dark btn-full" disabled={busy}>
-              {busy ? "Processing…" : "Continue to secure payment"}
+            <button
+              className="btn class-flow-button class-flow-button--gold btn-full"
+              disabled={busy}
+            >
+              {busy
+                ? "Processing…"
+                : "Continue to payment"}
             </button>
           </aside>
         </form>

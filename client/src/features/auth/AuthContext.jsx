@@ -16,8 +16,12 @@ export function AuthProvider({ children }) {
           setAccessToken(response.data.accessToken);
           setUser(response.data.user);
         }
-      } catch {
-        /* A guest is expected to have no refresh session. */
+      } catch (error) {
+        const code = error.response?.data?.code;
+        if (!active || code === "MISSING_REFRESH_TOKEN") return;
+        if (error.response?.status !== 401 && error.response?.status !== 429) {
+          console.error("Unable to restore the authentication session.", error);
+        }
       } finally {
         if (active) setReady(true);
       }
@@ -46,8 +50,15 @@ export function AuthProvider({ children }) {
       setUser(null);
     }
   };
+  const logoutAll = async () => {
+    await api.post("/auth/logout-all");
+    setAccessToken(null);
+    setUser(null);
+  };
   return (
-    <Ctx.Provider value={{ user, ready, login, register, logout }}>
+    <Ctx.Provider
+      value={{ user, ready, login, register, logout, logoutAll }}
+    >
       {children}
     </Ctx.Provider>
   );

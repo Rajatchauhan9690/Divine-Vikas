@@ -330,7 +330,7 @@ export default function AdminClassSessionForm() {
           </div>
           <button
             type="button"
-            className={`btn ${showCreateForm ? "btn-admin-cancel" : "btn-dark"}`}
+            className={`btn ${showCreateForm ? "btn-admin-cancel" : "btn-dark class-payment-pill"}`}
             onClick={() => {
               if (showCreateForm) {
                 setShowCreateForm(false);
@@ -453,7 +453,10 @@ export default function AdminClassSessionForm() {
             </small>
           )}
         </label>
-        <button className="btn btn-admin-save wide" disabled={saving}>
+        <button
+          className="btn btn-admin-save class-payment-pill wide"
+          disabled={saving}
+        >
           {saving
             ? "Saving…"
             : editingSessionId

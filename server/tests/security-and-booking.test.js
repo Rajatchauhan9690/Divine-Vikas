@@ -1,6 +1,7 @@
 import { before, after, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import net from 'node:net';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 import request from 'supertest';
@@ -21,6 +22,7 @@ let Order;
 let ProductPaymentAttempt;
 let RateLimitBucket;
 let ClassPaymentHold;
+let PasswordResetToken;
 
 before(async () => {
   mongo = await MongoMemoryServer.create();
@@ -34,6 +36,7 @@ before(async () => {
   ({ default: ProductPaymentAttempt } = await import('../src/models/ProductPaymentAttempt.js'));
   ({ default: RateLimitBucket } = await import('../src/models/RateLimitBucket.js'));
   ({ default: ClassPaymentHold } = await import('../src/models/ClassPaymentHold.js'));
+  ({ default: PasswordResetToken } = await import('../src/models/PasswordResetToken.js'));
 });
 
 after(async () => {
@@ -51,6 +54,7 @@ beforeEach(async () => {
     ProductPaymentAttempt.deleteMany({}),
     RateLimitBucket.deleteMany({}),
     ClassPaymentHold.deleteMany({}),
+    PasswordResetToken.deleteMany({}),
   ]);
 });
 
@@ -68,6 +72,45 @@ async function registerUser(email) {
     .send({ name: 'Test User', email, password: 'StrongPass123!' })
     .expect(201);
   return { agent, csrfToken, accessToken: response.body.accessToken, user: response.body.user, refreshCookie: response.headers['set-cookie'].find(value => value.startsWith('refreshToken=')) };
+}
+
+async function startSmtpCapture(messages) {
+  const server = net.createServer(socket => {
+    let buffer = '';
+    let inMessage = false;
+    let messageLines = [];
+    socket.write('220 localhost ESMTP\r\n');
+    socket.on('data', chunk => {
+      buffer += chunk.toString();
+      while (buffer.includes('\r\n')) {
+        const boundary = buffer.indexOf('\r\n');
+        const line = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        if (inMessage) {
+          if (line === '.') {
+            messages.push(messageLines.join('\r\n'));
+            messageLines = [];
+            inMessage = false;
+            socket.write('250 Message accepted\r\n');
+          } else {
+            messageLines.push(line.startsWith('..') ? line.slice(1) : line);
+          }
+        } else if (line.startsWith('EHLO') || line.startsWith('HELO')) {
+          socket.write('250-localhost\r\n250 SIZE 1000000\r\n');
+        } else if (line === 'DATA') {
+          inMessage = true;
+          socket.write('354 End data with <CR><LF>.<CR><LF>\r\n');
+        } else if (line === 'QUIT') {
+          socket.write('221 Bye\r\n');
+          socket.end();
+        } else {
+          socket.write('250 OK\r\n');
+        }
+      }
+    });
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  return { server, port: server.address().port };
 }
 
 test('customers can save at most three delivery addresses', async () => {
@@ -127,18 +170,141 @@ test('refresh token rotation revokes the old token and creates a different activ
   assert.ok(await Session.findOne({ refreshHash: replacementHash, revokedAt: null }));
 });
 
+test('guest refresh attempts do not exhaust the login authentication limit', async () => {
+  const customer = await registerUser('refresh-limit@example.com');
+  const agent = request.agent(app);
+  const csrfToken = await getCsrf(agent);
+
+  for (let attempt = 0; attempt < 12; attempt++) {
+    await agent.post('/api/auth/refresh')
+      .set('Origin', 'http://localhost:5173')
+      .set('X-CSRF-Token', csrfToken)
+      .expect(401);
+  }
+
+  const response = await agent.post('/api/auth/login')
+    .set('Origin', 'http://localhost:5173')
+    .set('X-CSRF-Token', csrfToken)
+    .send({ email: 'refresh-limit@example.com', password: 'StrongPass123!' })
+    .expect(200);
+  assert.equal(response.body.user.id, customer.user.id);
+});
+
+test('password reset verifies a delivered OTP and revokes existing sessions', async () => {
+  const customer = await registerUser('reset-password@example.com');
+  const messages = [];
+  const smtp = await startSmtpCapture(messages);
+  const envKeys = [
+    'SMTP_HOST',
+    'SMTP_PORT',
+    'SMTP_SECURE',
+    'SMTP_USER',
+    'SMTP_PASSWORD',
+    'SMTP_FROM',
+  ];
+  const originalEnv = Object.fromEntries(
+    envKeys.map(key => [key, process.env[key]]),
+  );
+  process.env.SMTP_HOST = '127.0.0.1';
+  process.env.SMTP_PORT = String(smtp.port);
+  process.env.SMTP_SECURE = 'false';
+  process.env.SMTP_USER = '';
+  process.env.SMTP_PASSWORD = '';
+  process.env.SMTP_FROM = 'Divine Vikas <support@divinevikas.test>';
+
+  try {
+    const response = await customer.agent
+      .post('/api/auth/password-reset/request')
+      .set('Origin', 'http://localhost:5173')
+      .set('X-CSRF-Token', customer.csrfToken)
+      .send({ email: 'reset-password@example.com' })
+      .expect(202);
+    assert.match(response.body.message, /sent to its email/);
+    assert.equal(messages.length, 1);
+    const otp = messages[0].match(/password reset code is (\d{6})/i)?.[1];
+    assert.ok(otp, 'email should include the six-digit reset code');
+
+    const resetRecord = await PasswordResetToken.findOne({
+      user: customer.user.id,
+    });
+    assert.ok(resetRecord);
+    assert.notEqual(resetRecord.otpHash, otp);
+
+    const agent = request.agent(app);
+    const csrfToken = await getCsrf(agent);
+    await agent
+      .post('/api/auth/password-reset/confirm')
+      .set('Origin', 'http://localhost:5173')
+      .set('X-CSRF-Token', csrfToken)
+      .send({
+        email: 'reset-password@example.com',
+        otp: otp === '000000' ? '000001' : '000000',
+        password: 'NewStrongPass123!',
+      })
+      .expect(400);
+
+    const resetResponse = await agent
+      .post('/api/auth/password-reset/confirm')
+      .set('Origin', 'http://localhost:5173')
+      .set('X-CSRF-Token', csrfToken)
+      .send({
+        email: 'reset-password@example.com',
+        otp,
+        password: 'NewStrongPass123!',
+      })
+      .expect(200);
+    assert.match(resetResponse.body.message, /Password updated/);
+    assert.ok(
+      (await PasswordResetToken.findById(resetRecord._id)).consumedAt,
+      'reset code should be single use',
+    );
+    assert.equal(
+      await Session.countDocuments({
+        user: customer.user.id,
+        revokedAt: null,
+      }),
+      0,
+      'all existing refresh sessions should be revoked',
+    );
+
+    await agent
+      .post('/api/auth/login')
+      .set('Origin', 'http://localhost:5173')
+      .set('X-CSRF-Token', csrfToken)
+      .send({
+        email: 'reset-password@example.com',
+        password: 'NewStrongPass123!',
+      })
+      .expect(200);
+  } finally {
+    await new Promise(resolve => smtp.server.close(resolve));
+    for (const key of envKeys) {
+      if (originalEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = originalEnv[key];
+    }
+  }
+});
+
 test('five failed logins lock the account and correct password is rejected during lockout', async () => {
   const user = await registerUser('lockout@example.com');
   const agent = request.agent(app);
   const csrfToken = await getCsrf(agent);
-  for (let i = 0; i < 4; i++) {
-    await agent.post('/api/auth/login').set('Origin', 'http://localhost:5173').set('X-CSRF-Token', csrfToken)
-      .send({ email: 'lockout@example.com', password: 'wrong-password' }).expect(401);
+  const priorTrustProxy = app.get('trust proxy');
+  app.set('trust proxy', true);
+  const login = password =>
+    agent.post('/api/auth/login')
+      .set('Origin', 'http://localhost:5173')
+      .set('X-CSRF-Token', csrfToken)
+      .set('X-Forwarded-For', '198.51.100.42')
+      .send({ email: 'lockout@example.com', password });
+  try {
+    for (let i = 0; i < 4; i++)
+      await login('wrong-password').expect(401);
+    await login('wrong-password').expect(423);
+    await login('StrongPass123!').expect(423);
+  } finally {
+    app.set('trust proxy', priorTrustProxy);
   }
-  await agent.post('/api/auth/login').set('Origin', 'http://localhost:5173').set('X-CSRF-Token', csrfToken)
-    .send({ email: 'lockout@example.com', password: 'wrong-password' }).expect(423);
-  await agent.post('/api/auth/login').set('Origin', 'http://localhost:5173').set('X-CSRF-Token', csrfToken)
-    .send({ email: 'lockout@example.com', password: 'StrongPass123!' }).expect(423);
 });
 
 test('two concurrent users cannot book the same class seat', async () => {
@@ -269,7 +435,7 @@ test('verified class payment confirms the seat', async () => {
   }
 });
 
-test('customer can hold and pay for up to three class seats in one order', async () => {
+test('customer can hold and pay for up to two class seats in one order', async () => {
   const customer = await registerUser('class-group-payment@example.com');
   await User.findByIdAndUpdate(customer.user.id, { phone: '9876543210' });
   const session = await ClassSession.create({
@@ -315,20 +481,20 @@ test('customer can hold and pay for up to three class seats in one order', async
       .post(`/api/classes/${session._id}/seats/payment`)
       .set(headers)
       .send({
-        seatNumbers: ['S01', 'S02', 'S03'],
+        seatNumbers: ['S01', 'S02'],
         email: 'Booking.Contact@example.com',
         phone: '+91 9876543210',
       })
       .expect(201);
-    assert.equal(orderAmount, 750);
+    assert.equal(orderAmount, 500);
     assert.equal(cashfreeCustomerEmail, 'booking.contact@example.com');
     assert.equal(cashfreeCustomerPhone, '9876543210');
-    assert.deepEqual(payment.body.payment.seatNumbers, ['S01', 'S02', 'S03']);
+    assert.deepEqual(payment.body.payment.seatNumbers, ['S01', 'S02']);
     const heldSession = await ClassSession.findById(session._id).lean();
     const heldSeats = heldSession.seats.filter(
       (seat) => seat.paymentOrderId === payment.body.payment.paymentOrderId,
     );
-    assert.equal(heldSeats.length, 3);
+    assert.equal(heldSeats.length, 2);
     assert.ok(heldSeats.every((seat) => seat.status === 'pending_payment'));
     assert.ok(heldSeats.every((seat) => seat.holdExpiresAt.getTime() === heldSeats[0].holdExpiresAt.getTime()));
     const otherSession = await ClassSession.create({
@@ -354,7 +520,7 @@ test('customer can hold and pay for up to three class seats in one order', async
       paymentOrderId: payment.body.payment.paymentOrderId,
       paymentStatus: 'SUCCESS',
       paymentId: 'group-payment-id',
-      paymentAmount: 750,
+      paymentAmount: 500,
     }), true);
     assert.equal(await ClassPaymentHold.countDocuments({ accountId: customer.user.id }), 0);
 
@@ -374,7 +540,7 @@ test('customer can hold and pay for up to three class seats in one order', async
     await request(app)
       .post(`/api/classes/${session._id}/seats/payment`)
       .set(headers)
-      .send({ seatNumbers: ['S01', 'S02', 'S03', 'S04'] })
+      .send({ seatNumbers: ['S01', 'S02', 'S03'] })
       .expect(400);
 
     const verification = await request(app)
@@ -382,11 +548,11 @@ test('customer can hold and pay for up to three class seats in one order', async
       .set(headers)
       .expect(200);
     assert.equal(verification.body.paymentStatus, 'paid');
-    assert.deepEqual(verification.body.booking.seatNumbers, ['S01', 'S02', 'S03']);
+    assert.deepEqual(verification.body.booking.seatNumbers, ['S01', 'S02']);
     const bookedSession = await ClassSession.findById(session._id).lean();
     assert.ok(
       bookedSession.seats
-        .filter((seat) => ['S01', 'S02', 'S03'].includes(seat.seatNumber))
+        .filter((seat) => ['S01', 'S02'].includes(seat.seatNumber))
         .every((seat) => seat.status === 'booked'),
     );
     assert.equal(bookedSession.seats.find((seat) => seat.seatNumber === 'S04').status, 'available');
@@ -1305,7 +1471,7 @@ test('customers may cancel eligible orders within six hours and stock is restore
   assert.equal((await Product.findById(product._id)).stock, 5);
 });
 
-test('customers may enter a new order address until shipment, but not after shipping', async () => {
+test('customers cannot change order addresses through My Orders', async () => {
   const customer = await registerUser('order-address-change@example.com');
   const order = await Order.create({
     user: customer.user.id,
@@ -1324,33 +1490,11 @@ test('customers may enter a new order address until shipment, but not after ship
     status: 'processing',
   });
   const headers = { Authorization: `Bearer ${customer.accessToken}` };
-  const nextAddress = {
-    fullName: 'Test User',
-    phone: '9876543210',
-    line1: 'New Road',
-    line2: 'Apartment 4',
-    city: 'Mumbai',
-    state: 'Maharashtra',
-    postalCode: '400001',
-    country: 'India',
-  };
-  const updated = await request(app)
-    .patch(`/api/orders/${order._id}/address`)
-    .set(headers)
-    .send({ shippingAddress: nextAddress })
-    .expect(200);
-  assert.equal(updated.body.order.shippingAddress.line1, 'New Road');
-  assert.equal(updated.body.order.shippingAddress.city, 'Mumbai');
-
-  await Order.updateOne(
-    { _id: order._id },
-    { $set: { status: 'shipped', addressChangeAllowed: false } },
-  );
   await request(app)
     .patch(`/api/orders/${order._id}/address`)
     .set(headers)
-    .send({ shippingAddress: { ...nextAddress, line1: 'Third Road' } })
-    .expect(409);
+    .send({ shippingAddress: order.shippingAddress })
+    .expect(404);
 });
 
 test('admin can cancel paid Cashfree orders and a late success does not restore stock twice', async () => {
@@ -2065,6 +2209,10 @@ test('Cashfree product checkout creates an order only after successful payment',
       .expect(201);
     assert.ok(checkout.body.attemptId);
     assert.equal(checkout.body.order, undefined);
+    assert.match(
+      checkout.body.payment.returnUrl,
+      new RegExp(`/orders\\?payment=return&order_id=${checkout.body.attemptId}$`),
+    );
     assert.equal(
       checkout.body.payment.paymentSessionId,
       'deferred-order-payment-session',

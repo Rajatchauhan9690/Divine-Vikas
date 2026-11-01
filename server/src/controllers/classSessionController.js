@@ -481,7 +481,7 @@ async function createClassPayment(
   if (
     !Array.isArray(requestedSeatNumbers) ||
     requestedSeatNumbers.length < 1 ||
-    requestedSeatNumbers.length > 3 ||
+    requestedSeatNumbers.length > 2 ||
     requestedSeatNumbers.some(
       (seatNumber) =>
         typeof seatNumber !== "string" ||
@@ -489,7 +489,7 @@ async function createClassPayment(
     )
   )
     throw new AppError(
-      "Select between 1 and 3 valid seats",
+      "Select between 1 and 2 valid seats",
       400,
       "INVALID_SEAT_SELECTION",
     );

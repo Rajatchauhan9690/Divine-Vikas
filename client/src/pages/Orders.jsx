@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
   Package,
 } from "lucide-react";
 import {
@@ -15,6 +17,7 @@ import { useAuth } from "../features/auth/AuthContext";
 import { useCart } from "../features/cart/CartContext";
 const stages = ["pending", "paid", "processing", "shipped", "delivered"];
 const cancellationWindowMs = 6 * 60 * 60 * 1000;
+const ORDERS_PER_PAGE = 6;
 function getOrderReturnWindowDays(order) {
   if (
     !order.items?.length ||
@@ -30,18 +33,6 @@ function getOrderReturnWindowDays(order) {
     ...order.items.map((item) => item.returnWindowDays),
   );
 }
-const emptyAddress = {
-  label: "Home",
-  fullName: "",
-  phone: "",
-  line1: "",
-  line2: "",
-  city: "",
-  state: "",
-  postalCode: "",
-  country: "India",
-  landmark: "",
-};
 export default function Orders() {
   const { user, ready } = useAuth();
   const { items: cartItems, remove } = useCart();
@@ -50,17 +41,18 @@ export default function Orders() {
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(""),
     [ordersLoaded, setOrdersLoaded] = useState(false);
+  const [ordersPage, setOrdersPage] = useState(1);
   const [now, setNow] = useState(Date.now());
   const [params] = useSearchParams();
   const { id: orderId } = useParams();
   const verifiedPaymentReturn = useRef("");
-  const [addressChangeOrderId, setAddressChangeOrderId] = useState("");
-  const [savedAddresses, setSavedAddresses] = useState([]);
-  const [selectedAddressId, setSelectedAddressId] = useState("");
-  const [addressMode, setAddressMode] = useState("saved");
-  const [newAddress, setNewAddress] = useState(emptyAddress);
   const [returnReason, setReturnReason] = useState("");
   const [returnOrderId, setReturnOrderId] = useState("");
+  const ordersPageCount = Math.ceil(orders.length / ORDERS_PER_PAGE);
+  const visibleOrders = orders.slice(
+    (ordersPage - 1) * ORDERS_PER_PAGE,
+    ordersPage * ORDERS_PER_PAGE,
+  );
   async function load() {
     const r = await api.get("/orders/mine");
     setOrders(r.data.orders);
@@ -76,6 +68,11 @@ export default function Orders() {
         setOrdersLoaded(true);
       });
   }, [user]);
+  useEffect(() => {
+    setOrdersPage((currentPage) =>
+      Math.min(currentPage, Math.max(1, ordersPageCount)),
+    );
+  }, [ordersPageCount]);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 10000);
     return () => window.clearInterval(timer);
@@ -127,77 +124,6 @@ export default function Orders() {
   }, [cartItems, load, params, remove, user]);
   if (!ready) return <div className="loading-state">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  async function changeAddress(order) {
-    setError("");
-    setAddressChangeOrderId(order._id);
-    setBusy(order._id);
-    try {
-      const { data } = await api.get("/profile");
-      const list = data.profile.addresses || [];
-      if (!list.length) {
-        setAddressMode("new");
-      } else {
-        setAddressMode("saved");
-      }
-      setSavedAddresses(list);
-      setSelectedAddressId(
-        list.find((address) => address.isDefault)?._id || list[0]?._id || "",
-      );
-      setNewAddress({
-        ...emptyAddress,
-        fullName: order.shippingAddress?.fullName || user.name || "",
-        phone: order.shippingAddress?.phone || user.phone || "",
-        country: order.shippingAddress?.country || "India",
-      });
-    } catch (e) {
-      setAddressChangeOrderId("");
-      setError(e.response?.data?.message || "Could not load saved addresses.");
-    } finally {
-      setBusy("");
-    }
-  }
-  async function saveAddressChange(order) {
-    const selectedAddress = savedAddresses.find(
-      (address) => address._id === selectedAddressId,
-    );
-    const shippingAddress =
-      addressMode === "saved" ? selectedAddress : newAddress;
-    if (!shippingAddress) {
-      setError("Choose a saved address or enter a new delivery address.");
-      return;
-    }
-    if (
-      addressMode === "new" &&
-      (!shippingAddress.fullName.trim() ||
-        !shippingAddress.phone.trim() ||
-        !shippingAddress.line1.trim() ||
-        !shippingAddress.city.trim() ||
-        !shippingAddress.state.trim() ||
-        !shippingAddress.postalCode.trim() ||
-        !/^\+?[0-9 ()-]{8,20}$/.test(shippingAddress.phone))
-    ) {
-      setError(
-        "Enter a valid name, phone, street address, city, state, and postal code.",
-      );
-      return;
-    }
-    setError("");
-    setBusy(order._id);
-    try {
-      await api.patch(`/orders/${order._id}/address`, {
-        shippingAddress,
-      });
-      setNotice("Delivery address updated.");
-      setAddressChangeOrderId("");
-      await load();
-    } catch (e) {
-      setError(
-        e.response?.data?.message || "Address cannot be changed for this order",
-      );
-    } finally {
-      setBusy("");
-    }
-  }
   async function cancelOrder(order) {
     const paidOnline =
       order.paymentMethod === "cashfree" && order.paymentStatus === "paid";
@@ -297,8 +223,10 @@ export default function Orders() {
         <div
           className={`orders-list${orderId ? " order-details-list" : ""}`}
         >
-          {orders
-            .filter((order) => !orderId || order._id === orderId)
+          {(orderId
+            ? orders.filter((order) => order._id === orderId)
+            : visibleOrders
+          )
             .map((o) =>
               !orderId ? (
                 <Link
@@ -530,156 +458,6 @@ export default function Orders() {
                   </div>
                 ))}
               </div>
-              {["pending", "paid", "processing"].includes(o.status) &&
-                o.addressChangeAllowed && (
-                  <>
-                    <button
-                      type="button"
-                      className="btn btn-outline"
-                      disabled={busy === o._id}
-                      onClick={() =>
-                        addressChangeOrderId === o._id
-                          ? setAddressChangeOrderId("")
-                          : changeAddress(o)
-                      }
-                    >
-                      {busy === o._id
-                        ? "Loading addresses…"
-                        : addressChangeOrderId === o._id
-                          ? "Close address selector"
-                          : "Change delivery address"}
-                    </button>
-                    {addressChangeOrderId === o._id && (
-                      <div className="order-address-editor">
-                        <div className="order-previous-address">
-                          <b>Current delivery address</b>
-                          <span>
-                            {o.shippingAddress?.fullName},{" "}
-                            {o.shippingAddress?.line1}
-                            {o.shippingAddress?.line2
-                              ? `, ${o.shippingAddress.line2}`
-                              : ""}
-                            , {o.shippingAddress?.city},{" "}
-                            {o.shippingAddress?.state}{" "}
-                            {o.shippingAddress?.postalCode}
-                          </span>
-                        </div>
-                        {savedAddresses.length > 0 && (
-                          <div className="order-address-modes">
-                            <button
-                              type="button"
-                              className={`btn ${addressMode === "saved" ? "btn-dark" : "btn-outline"}`}
-                              onClick={() => setAddressMode("saved")}
-                            >
-                              Use saved address
-                            </button>
-                            <button
-                              type="button"
-                              className={`btn ${addressMode === "new" ? "btn-dark" : "btn-outline"}`}
-                              onClick={() => setAddressMode("new")}
-                            >
-                              Enter new address
-                            </button>
-                          </div>
-                        )}
-                        {addressMode === "saved" &&
-                        savedAddresses.length > 0 ? (
-                          <>
-                            <label htmlFor={`address-${o._id}`}>
-                              Choose a saved delivery address
-                            </label>
-                            <select
-                              id={`address-${o._id}`}
-                              value={selectedAddressId}
-                              onChange={(event) =>
-                                setSelectedAddressId(event.target.value)
-                              }
-                            >
-                              {savedAddresses.map((address) => (
-                                <option key={address._id} value={address._id}>
-                                  {address.label || "Address"} — {address.line1}
-                                  , {address.city}
-                                  {address.isDefault ? " (Default)" : ""}
-                                </option>
-                              ))}
-                            </select>
-                            <div className="order-address-preview">
-                              {
-                                savedAddresses.find(
-                                  (address) =>
-                                    address._id === selectedAddressId,
-                                )?.fullName
-                              }
-                              {", "}
-                              {
-                                savedAddresses.find(
-                                  (address) =>
-                                    address._id === selectedAddressId,
-                                )?.line1
-                              }
-                              {", "}
-                              {
-                                savedAddresses.find(
-                                  (address) =>
-                                    address._id === selectedAddressId,
-                                )?.city
-                              }
-                            </div>
-                          </>
-                        ) : (
-                          <div className="order-new-address-fields">
-                            {[
-                              ["fullName", "Full name", true],
-                              ["phone", "Phone number", true],
-                              ["line1", "Address line 1", true],
-                              ["line2", "Address line 2", false],
-                              ["city", "City", true],
-                              ["state", "State", true],
-                              ["postalCode", "Postal code", true],
-                              ["country", "Country", true],
-                              ["landmark", "Landmark", false],
-                            ].map(([field, label, required]) => (
-                              <label key={field}>
-                                {label}
-                                <input
-                                  required={required}
-                                  value={newAddress[field]}
-                                  onChange={(event) =>
-                                    setNewAddress((current) => ({
-                                      ...current,
-                                      [field]: event.target.value,
-                                    }))
-                                  }
-                                />
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                        <div className="order-address-actions">
-                          <button
-                            type="button"
-                            className="btn btn-dark"
-                            disabled={
-                              busy === o._id ||
-                              (addressMode === "saved" && !selectedAddressId)
-                            }
-                            onClick={() => saveAddressChange(o)}
-                          >
-                            {busy === o._id ? "Saving…" : "Save address"}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-outline"
-                            disabled={busy === o._id}
-                            onClick={() => setAddressChangeOrderId("")}
-                          >
-                            Keep current address
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
               {["pending", "paid", "processing"].includes(o.status) && (
                 <>
                   {(() => {
@@ -733,6 +511,29 @@ export default function Orders() {
               ),
             )}
         </div>
+      )}
+      {!orderId && orders.length > ORDERS_PER_PAGE && (
+        <nav className="orders-pagination" aria-label="Orders pagination">
+          <button
+            type="button"
+            className="btn btn-outline"
+            disabled={ordersPage <= 1}
+            onClick={() => setOrdersPage((page) => page - 1)}
+          >
+            <ChevronLeft size={16} /> Previous
+          </button>
+          <span>
+            Page {ordersPage} of {ordersPageCount} · {orders.length} orders
+          </span>
+          <button
+            type="button"
+            className="btn btn-outline"
+            disabled={ordersPage >= ordersPageCount}
+            onClick={() => setOrdersPage((page) => page + 1)}
+          >
+            Next <ChevronRight size={16} />
+          </button>
+        </nav>
       )}
     </section>
   );

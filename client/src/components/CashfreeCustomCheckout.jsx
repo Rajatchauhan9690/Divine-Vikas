@@ -54,7 +54,7 @@ function loadCashfreeSdk(environment) {
   return cashfreeScriptPromise.then(createClient);
 }
 
-export default function ClassCashfreeCheckout({
+export default function CashfreeCustomCheckout({
   payment,
   sessionTitle,
   price,
@@ -62,6 +62,13 @@ export default function ClassCashfreeCheckout({
   phone,
   onBack,
   onPaymentComplete,
+  checkoutTitle = "Complete your booking",
+  summaryLabel = "BOOKING SUMMARY",
+  summaryDescription,
+  totalAmount,
+  expiryLabel = "Seat hold expires",
+  pendingMessage = "Payment is still processing. Your seats remain held while Cashfree confirms it.",
+  unconfirmedMessage = "We could not confirm the payment yet. Your seats remain held; please wait and try again.",
 }) {
   const [method, setMethod] = useState("upi");
   const [selectedUpiApp, setSelectedUpiApp] = useState(upiApps[0].id);
@@ -133,7 +140,7 @@ export default function ClassCashfreeCheckout({
             setSdkStatus("error");
             setPaymentMessage(
               data.error?.message ||
-                "A secure payment field could not be loaded. Please try again or use hosted checkout.",
+                "A secure payment field could not be loaded. Please try again.",
             );
           });
           component.on("ready", () => {
@@ -279,13 +286,9 @@ export default function ClassCashfreeCheckout({
       } else if (result?.paymentDetails) {
         const status = await onPaymentComplete();
         if (status === "pending") {
-          setPaymentMessage(
-            "Payment is still processing. Your seats remain held while Cashfree confirms it.",
-          );
+          setPaymentMessage(pendingMessage);
         } else if (!status) {
-          setPaymentMessage(
-            "We could not confirm the payment yet. Your seats remain held; please wait and try again.",
-          );
+          setPaymentMessage(unconfirmedMessage);
         }
       } else if (result?.redirect) {
         setPaymentMessage(
@@ -294,13 +297,9 @@ export default function ClassCashfreeCheckout({
       } else {
         const status = await onPaymentComplete();
         if (status === "pending") {
-          setPaymentMessage(
-            "Payment is still processing. Your seats remain held while Cashfree confirms it.",
-          );
+          setPaymentMessage(pendingMessage);
         } else if (!status) {
-          setPaymentMessage(
-            "We could not confirm the payment yet. Your seats remain held; please wait and try again.",
-          );
+          setPaymentMessage(unconfirmedMessage);
         }
       }
     } catch (error) {
@@ -312,7 +311,8 @@ export default function ClassCashfreeCheckout({
     }
   }
 
-  const total = Number(price) * payment.seatNumbers.length;
+  const seatNumbers = payment.seatNumbers || [];
+  const total = totalAmount ?? Number(price) * seatNumbers.length;
 
   return (
     <div className="class-custom-checkout-overlay">
@@ -325,31 +325,33 @@ export default function ClassCashfreeCheckout({
         <header className="class-custom-checkout-header">
           <button
             type="button"
-            className="class-custom-checkout-back"
+            className="class-custom-checkout-back class-flow-button class-flow-button--gold"
             onClick={onBack}
           >
             <ArrowLeft size={17} /> Back
           </button>
           <div className="class-custom-checkout-heading">
             <span className="eyebrow">SECURE CHECKOUT</span>
-            <h2 id="class-custom-checkout-title">Complete your booking</h2>
-            <p>Choose a payment method to continue securely with Cashfree.</p>
+            <h2 id="class-custom-checkout-title">{checkoutTitle}</h2>
+            <p>Choose UPI or card to continue securely with Cashfree.</p>
           </div>
         </header>
 
         <div className="class-custom-checkout-content">
           <aside className="class-custom-order-summary">
-            <span className="eyebrow">BOOKING SUMMARY</span>
+            <span className="eyebrow">{summaryLabel}</span>
             <h3>{sessionTitle}</h3>
-            <p>
-              {payment.seatNumbers.length} seat
-              {payment.seatNumbers.length === 1 ? "" : "s"} ·{" "}
-              {payment.seatNumbers.join(", ")}
-            </p>
+            <p>{summaryDescription || (
+              <>
+                {seatNumbers.length} seat
+                {seatNumbers.length === 1 ? "" : "s"} ·{" "}
+                {seatNumbers.join(", ")}
+              </>
+            )}</p>
             <p className="class-custom-contact">{email} · {phone}</p>
             {payment.expiresAt && (
               <p className="class-custom-hold">
-                Seat hold expires{" "}
+                {expiryLabel}{" "}
                 {new Date(payment.expiresAt).toLocaleTimeString([], {
                   hour: "numeric",
                   minute: "2-digit",
@@ -461,7 +463,7 @@ export default function ClassCashfreeCheckout({
 
             <button
               type="button"
-              className="btn btn-dark class-custom-pay"
+              className="btn class-custom-pay class-flow-button class-flow-button--green"
               onClick={submitPayment}
               disabled={
                 submitting ||

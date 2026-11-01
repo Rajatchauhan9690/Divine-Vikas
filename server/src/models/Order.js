@@ -140,7 +140,6 @@ const schema = new mongoose.Schema(
         by: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       },
     ],
-    addressChangeAllowed: { type: Boolean, default: true },
     cancellationProcessing: { type: Boolean, default: false },
     cancellationProcessingAt: { type: Date, default: null },
     inventoryReleasedAt: { type: Date, default: null },

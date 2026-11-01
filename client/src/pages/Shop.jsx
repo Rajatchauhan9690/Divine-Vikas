@@ -61,6 +61,7 @@ export default function Shop() {
             <button
               key={c}
               className={category === c ? "active" : ""}
+              aria-pressed={category === c}
               onClick={() => setCategory(c)}
             >
               {c}

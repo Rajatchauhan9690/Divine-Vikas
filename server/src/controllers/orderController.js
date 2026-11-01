@@ -109,6 +109,7 @@ export const createOrder = asyncHandler(async (req, res) => {
       providerOrderId: `DV${crypto.randomBytes(16).toString("hex")}`,
       expiresAt,
     });
+    const returnUrl = `${process.env.CLIENT_ORIGIN || "http://localhost:5173"}/orders?payment=return&order_id=${attempt._id}`;
     const cf = await cashfreeRequest("/orders", {
       body: {
         order_id: attempt.providerOrderId,
@@ -122,7 +123,7 @@ export const createOrder = asyncHandler(async (req, res) => {
           customer_phone: address.phone.replace(/[^0-9]/g, "").slice(-10),
         },
         order_meta: {
-          return_url: `${process.env.CLIENT_ORIGIN || "http://localhost:5173"}/orders?payment=return&order_id=${attempt._id}`,
+          return_url: returnUrl,
           notify_url: process.env.CASHFREE_WEBHOOK_URL || undefined,
         },
       },
@@ -140,6 +141,7 @@ export const createOrder = asyncHandler(async (req, res) => {
             ? "production"
             : "sandbox",
         expiresAt,
+        returnUrl,
       },
     });
   } catch (error) {
@@ -372,7 +374,6 @@ async function cancelOrder(orderId, actor, isAdmin) {
         status: "cancelled",
         cancellationProcessing: false,
         cancellationProcessingAt: null,
-        addressChangeAllowed: false,
         inventoryReleasedAt: now,
       },
       $push: {
@@ -583,37 +584,6 @@ export const adminCancelOrder = asyncHandler(async (req, res) => {
   res.json({ success: true, order });
 });
 
-export const updateMyOrderAddress = asyncHandler(async (req, res) => {
-  const order = await Order.findOne({
-    _id: req.params.orderId,
-    user: req.user._id,
-  });
-  if (!order) throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
-  if (
-    ["shipped", "delivered", "cancelled"].includes(order.status) ||
-    !order.addressChangeAllowed ||
-    order.cancellationProcessing
-  )
-    throw new AppError(
-      "Delivery address can only be changed before the order is shipped",
-      409,
-      "ADDRESS_CHANGE_CLOSED",
-    );
-  if (!validAddress(req.body.shippingAddress))
-    throw new AppError(
-      "A valid shipping address is required",
-      400,
-      "INVALID_ADDRESS",
-    );
-  order.shippingAddress = req.body.shippingAddress;
-  order.statusHistory.push({
-    status: order.status,
-    note: "Delivery address updated by customer",
-    by: req.user._id,
-  });
-  await order.save();
-  res.json({ success: true, order });
-});
 export const getOrder = asyncHandler(async (req, res) => {
   const query = { _id: req.params.orderId };
   if (req.user.role !== "admin") query.user = req.user._id;
@@ -671,9 +641,6 @@ export const adminUpdateOrder = asyncHandler(async (req, res) => {
     order.status = req.body.status;
     if (req.body.status === "delivered" && !order.deliveredAt)
       order.deliveredAt = new Date();
-    order.addressChangeAllowed = ["pending", "paid", "processing"].includes(
-      order.status,
-    );
     order.statusHistory.push({
       status: order.status,
       note: String(req.body.note || `Status updated to ${order.status}`).slice(
@@ -700,7 +667,6 @@ export const adminUpdateOrder = asyncHandler(async (req, res) => {
       );
     order.tracking.trackingUrl = u;
   }
-  if (order.status === "shipped") order.addressChangeAllowed = false;
   await order.save();
   res.json({ success: true, order });
 });
@@ -740,7 +706,6 @@ export const shiprocketWebhook = asyncHandler(async (req, res) => {
     order.status = nextStatus;
     if (nextStatus === "delivered" && !order.deliveredAt)
       order.deliveredAt = new Date();
-    order.addressChangeAllowed = false;
     order.statusHistory.push({ status: nextStatus, note });
   } else {
     order.statusHistory.push({ status: order.status, note });
@@ -879,7 +844,6 @@ export const cashfreeWebhook = asyncHandler(async (req, res) => {
         $set: {
           paymentStatus: "failed",
           status: "cancelled",
-          addressChangeAllowed: false,
           inventoryReleasedAt: now,
         },
         $push: {

@@ -28,7 +28,7 @@ This document summarizes the customer, admin, payment, and integration capabilit
 ## Class sessions and bookings
 
 - Browse upcoming sessions, inspect available seats, and make authenticated bookings.
-- Reserve one to three seats in one Cashfree checkout.
+- Reserve one or two seats in one Cashfree checkout.
 - Seat holds last up to 20 minutes; seats are confirmed only after server-side Cashfree payment verification.
 - Review active payment holds and confirmed class bookings.
 - Admins can create and edit class sessions, set per-seat pricing, and delete an upcoming session only when it has no active holds or booked seats.

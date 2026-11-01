@@ -21,7 +21,10 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const { count } = useCart();
   const { pathname, hash } = useLocation();
-  const isAuthPage = pathname === "/login" || pathname === "/register";
+  const isAuthPage =
+    pathname === "/login" ||
+    pathname === "/register" ||
+    pathname === "/password-reset";
   const hideFooterOnMobile =
     pathname === "/shop" ||
     pathname === "/classes" ||
@@ -74,14 +77,14 @@ export default function Layout() {
                 <ShieldCheck size={16} /> Admin
               </NavLink>
             )}
-            <Link to="/cart" className="cart-link" onClick={closeMenu}>
+            <NavLink to="/cart" className="cart-link" onClick={closeMenu}>
               <ShoppingBag size={16} /> Cart
               {count > 0 && (
                 <span className="cart-count" aria-label={`${count} items`}>
                   {count}
                 </span>
               )}
-            </Link>
+            </NavLink>
             {user && (
               <>
                 <NavLink to="/orders" onClick={closeMenu}>
@@ -126,7 +129,10 @@ export default function Layout() {
         </header>
       )}
       <main>
-        <div key={pathname} className="page-transition">
+        <div
+          key={isAuthPage ? "auth-pages" : pathname}
+          className="page-transition"
+        >
           <Outlet />
         </div>
       </main>

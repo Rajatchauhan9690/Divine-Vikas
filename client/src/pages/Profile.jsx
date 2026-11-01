@@ -17,7 +17,7 @@ const empty = {
   isDefault: false,
 };
 export default function Profile() {
-  const { user, ready } = useAuth();
+  const { user, ready, logoutAll } = useAuth();
   const [profile, setProfile] = useState(null),
     [form, setForm] = useState(empty),
     [editing, setEditing] = useState(""),
@@ -67,6 +67,23 @@ export default function Profile() {
       showToast("success", "Profile updated.");
     } catch (e) {
       showToast("error", e.response?.data?.message || "Could not update profile");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function signOutAllDevices() {
+    if (!window.confirm("This will sign you out on all devices. Continue?")) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await logoutAll();
+    } catch (e) {
+      showToast(
+        "error",
+        e.response?.data?.message ||
+          "Could not sign out on all devices. Please try again.",
+      );
     } finally {
       setBusy(false);
     }
@@ -186,9 +203,22 @@ export default function Profile() {
               Turn {profile?.whatsappOptIn ? "off" : "on"} WhatsApp updates
             </button>
           </div>
-          <button className="btn btn-dark" disabled={busy}>
-            Save profile
-          </button>
+          <div className="profile-actions">
+            <button
+              className="btn class-flow-button class-flow-button--gold"
+              disabled={busy}
+            >
+              Save profile
+            </button>
+            <button
+              type="button"
+              className="btn class-flow-button class-flow-button--gold"
+              disabled={busy}
+              onClick={signOutAllDevices}
+            >
+              {busy ? "Signing out…" : "Log out all devices"}
+            </button>
+          </div>
         </form>
         <div className="account-card">
           <div className="account-card-heading">
@@ -232,7 +262,7 @@ export default function Profile() {
           )}
           <button
             type="button"
-            className="btn btn-outline"
+            className="btn class-flow-button class-flow-button--gold"
             disabled={
               busy ||
               (!addressFormOpen && !editing && (profile?.addresses?.length || 0) >= 3)
@@ -349,7 +379,10 @@ export default function Profile() {
           Set as default address
         </label>
         <div className="inline-actions">
-          <button className="btn btn-dark" disabled={busy}>
+          <button
+            className="btn class-flow-button class-flow-button--gold"
+            disabled={busy}
+          >
             {busy ? "Saving…" : editing ? "Update address" : "Save address"}
           </button>
           <button

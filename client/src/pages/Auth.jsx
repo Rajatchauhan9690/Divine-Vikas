@@ -43,22 +43,7 @@ export default function Auth({ mode = "login" }) {
     }
   }
   return (
-    <section className={`auth-page ${isLogin ? "auth-login" : "auth-register"}`}>
-      <div className="auth-art">
-        <img
-          src="https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?w=1000&q=80"
-          alt="Perfume and flowers"
-        />
-        <div>
-          <span className="eyebrow">A MOMENT JUST FOR YOU</span>
-          <h2>
-            Make room for
-            <br />
-            <em>beautiful rituals.</em>
-          </h2>
-        </div>
-      </div>
-      <div className="auth-form-wrap">
+    <div className="auth-form-wrap">
         <div className="auth-topbar">
           <div className="auth-brand">
             <Flower2 />
@@ -69,9 +54,7 @@ export default function Auth({ mode = "login" }) {
             Back to home
           </Link>
         </div>
-        <span className="eyebrow">
-          WELCOME {isLogin ? "BACK" : "TO OUR WORLD"}
-        </span>
+        {isLogin && <span className="eyebrow">WELCOME BACK</span>}
         <h1>{isLogin ? "Good to see you." : "Create your account."}</h1>
         <p>
           {isLogin
@@ -132,6 +115,11 @@ export default function Auth({ mode = "login" }) {
             {busy ? "Please wait…" : isLogin ? "Sign in" : "Create account"}
           </button>
         </form>
+        {isLogin && (
+          <p className="auth-switch">
+            <Link to="/password-reset">Forgot password?</Link>
+          </p>
+        )}
         <p className="auth-switch">
           {isLogin ? "New to Divine Vikas? " : "Already have an account? "}
           <Link
@@ -144,7 +132,6 @@ export default function Auth({ mode = "login" }) {
         <small className="auth-note">
           Your account is protected with secure session-based authentication.
         </small>
-      </div>
-    </section>
+    </div>
   );
 }

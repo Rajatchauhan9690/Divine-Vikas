@@ -403,7 +403,7 @@ export default function Admin() {
           </label>
           <button
             type="button"
-            className={`btn ${show ? "btn-admin-cancel" : "btn-dark"}`}
+            className={`btn ${show ? "btn-admin-cancel" : "btn-dark class-payment-pill"}`}
             onClick={() => {
               if (show) {
                 setShow(false);
@@ -629,7 +629,10 @@ export default function Admin() {
               </small>
             )}
           </label>
-          <button className="btn btn-admin-save" disabled={busy}>
+          <button
+            className="btn btn-admin-save class-payment-pill"
+            disabled={busy}
+          >
             {busy
               ? "Saving…"
               : editingProductId

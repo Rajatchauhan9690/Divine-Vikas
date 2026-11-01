@@ -12,39 +12,7 @@ import { createPortal } from "react-dom";
 import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
 import AdminToast from "../components/AdminToast";
-import ClassCashfreeCheckout from "../components/ClassCashfreeCheckout";
-
-function openCashfreeCheckout(sessionId, environment) {
-  return new Promise((resolve, reject) => {
-    const start = () => {
-      try {
-        const cashfree = window.Cashfree({
-          mode: environment === "production" ? "production" : "sandbox",
-        });
-        Promise.resolve(
-          cashfree.checkout({
-            paymentSessionId: sessionId,
-            redirectTarget: "_modal",
-          }),
-        )
-          .then(resolve)
-          .catch(reject);
-      } catch (error) {
-        reject(error);
-      }
-    };
-    if (window.Cashfree) {
-      start();
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
-    script.onload = start;
-    script.onerror = () =>
-      reject(new Error("Unable to load Cashfree checkout. Please try again."));
-    document.head.appendChild(script);
-  });
-}
+import CashfreeCustomCheckout from "../components/CashfreeCustomCheckout";
 
 function formatRetryCountdown(seconds) {
   const minutes = Math.floor(seconds / 60);
@@ -64,7 +32,6 @@ export default function ClassBookings() {
   const [selectedSeatNumbers, setSelectedSeatNumbers] = useState([]);
   const [pendingClassPayment, setPendingClassPayment] = useState(null);
   const [checkoutActive, setCheckoutActive] = useState(false);
-  const [checkoutMode, setCheckoutMode] = useState("hosted");
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [exitFromCheckout, setExitFromCheckout] = useState(false);
   const [bookingStep, setBookingStep] = useState("seats");
@@ -81,10 +48,7 @@ export default function ClassBookings() {
   const [classPaymentRetrySeconds, setClassPaymentRetrySeconds] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
   const verifiedReturn = useRef("");
-  const checkoutFlowRef = useRef(0);
   const exitPromptRef = useRef(null);
-  const paymentPageReturnRestored = useRef(false);
-  const paymentPageReturnData = useRef(null);
   const customCheckoutRestoreAttempted = useRef(false);
 
   useEffect(() => {
@@ -148,9 +112,10 @@ export default function ClassBookings() {
     if (!quiet) setLoading(true);
     try {
       const { data } = await api.get("/classes");
-      setSessions(data.sessions || []);
+      const loadedSessions = data.sessions || [];
+      setSessions(loadedSessions);
       setSessionsLoaded(true);
-      return true;
+      return loadedSessions;
     } catch (error) {
       setNotice({
         type: "error",
@@ -158,7 +123,7 @@ export default function ClassBookings() {
           error.response?.data?.message ||
           "Could not load classes. Please try again.",
       });
-      return false;
+      return null;
     } finally {
       if (!quiet) setLoading(false);
     }
@@ -189,16 +154,11 @@ export default function ClassBookings() {
         .then(({ data }) => {
           const profile = data.profile;
           const optedIn = Boolean(profile.whatsappOptIn);
-          const paymentReturn = paymentPageReturnData.current;
           const savedPhone =
             profile.addresses?.find((address) => address.isDefault)?.phone ||
             profile.addresses?.[0]?.phone;
-          setContactEmail(
-            paymentReturn?.email || profile.email || user.email || "",
-          );
-          setContactPhone(
-            paymentReturn?.phone || profile.phone || savedPhone || "",
-          );
+          setContactEmail(profile.email || user.email || "");
+          setContactPhone(profile.phone || savedPhone || "");
           setWhatsappOptIn(optedIn);
           setSavedWhatsappOptIn(optedIn);
           setProfileLoaded(true);
@@ -213,66 +173,6 @@ export default function ClassBookings() {
         );
     }
   }, [loadPaymentHolds, loadSessions, user]);
-
-  useEffect(() => {
-    if (!sessionsLoaded || paymentPageReturnRestored.current) return;
-    paymentPageReturnRestored.current = true;
-    const savedReturn = sessionStorage.getItem("class-payment-page-return");
-    if (!savedReturn) return;
-    sessionStorage.removeItem("class-payment-page-return");
-
-    let restored;
-    try {
-      restored = JSON.parse(savedReturn);
-    } catch {
-      setNotice({
-        type: "error",
-        message:
-          "Could not restore the booking page. Please select your seats again.",
-      });
-      return;
-    }
-    paymentPageReturnData.current = restored;
-
-    const session = sessions.find((item) => item._id === restored.classId);
-    if (!session) {
-      setNotice({
-        type: "error",
-        message:
-          "The class session is no longer available. Please choose another session.",
-      });
-      return;
-    }
-
-    setSelectedId(session._id);
-    setContactEmail(restored.email || "");
-    setContactPhone(restored.phone || "");
-    if (restored.paymentStatus === "paid") {
-      setSelectedSeatNumbers([]);
-      setBookingStep("seats");
-      setNotice({
-        type: "success",
-        message: `Payment confirmed. Seat${restored.seatNumbers.length > 1 ? "s" : ""} ${restored.seatNumbers.join(", ")} ${restored.seatNumbers.length > 1 ? "are" : "is"} booked.`,
-      });
-      return;
-    }
-
-    const availableSeats = restored.seatNumbers.filter((seatNumber) =>
-      session.seats.some(
-        (seat) => seat.seatNumber === seatNumber && seat.status === "available",
-      ),
-    );
-    setSelectedSeatNumbers(availableSeats);
-    setBookingStep(availableSeats.length ? "payment" : "seats");
-    setNotice({
-      type:
-        availableSeats.length === restored.seatNumbers.length ? "" : "error",
-      message:
-        availableSeats.length === restored.seatNumbers.length
-          ? ""
-          : "Some seats are no longer available. Please select available seats again.",
-    });
-  }, [sessionsLoaded, sessions]);
 
   useEffect(() => {
     if (
@@ -422,7 +322,7 @@ export default function ClassBookings() {
           message: inactivePayment
             ? "The seat hold expired or was released before Cashfree confirmed payment. Check My bookings before selecting seats again."
             : error.response?.data?.message ||
-                "Could not restore your checkout. Choose Custom checkout to try again.",
+              "Could not restore your checkout. Please try again.",
         });
         if (inactivePayment)
           await Promise.all([loadSessions({ quiet: true }), loadPaymentHolds()]);
@@ -501,7 +401,37 @@ export default function ClassBookings() {
             type: "error",
             message: `Cashfree has not confirmed payment yet. Seat${data.booking.seatNumbers.length > 1 ? "s" : ""} ${data.booking.seatNumbers.join(", ")} ${data.booking.seatNumbers.length > 1 ? "are" : "is"} temporarily held; refresh in a moment.`,
           });
-        await Promise.all([loadSessions({ quiet: true }), loadPaymentHolds()]);
+        const [refreshedSessions] = await Promise.all([
+          loadSessions({ quiet: true }),
+          loadPaymentHolds(),
+        ]);
+        if (data.paymentStatus === "failed" && refreshedSessions) {
+          const currentSession = refreshedSessions.find(
+            (session) => session._id === classId,
+          );
+          const availableSeats = (data.booking.seatNumbers || []).filter(
+            (number) =>
+              currentSession?.seats.some(
+                (seat) =>
+                  seat.seatNumber === number && seat.status === "available",
+              ),
+          );
+          if (availableSeats.length === data.booking.seatNumbers.length) {
+            setSelectedSeatNumbers(availableSeats);
+            setBookingStep("payment");
+            setNotice({
+              type: "",
+              message:
+                "Payment was not completed. Your seats are available again; choose Custom Card / UPI to retry.",
+            });
+          } else {
+            setNotice({
+              type: "error",
+              message:
+                "Payment was not completed. Some seats are no longer available; please select available seats again.",
+            });
+          }
+        }
       })
       .catch((error) =>
         setNotice({
@@ -525,10 +455,10 @@ export default function ClassBookings() {
       setNotice({ type: "", message: "" });
       return;
     }
-    if (selectedSeatNumbers.length >= 3) {
+    if (selectedSeatNumbers.length >= 2) {
       setToast({
         type: "error",
-        text: "You can select a maximum of 3 seats per booking.",
+        text: "You can select a maximum of 2 seats per booking.",
       });
       return;
     }
@@ -560,7 +490,7 @@ export default function ClassBookings() {
     return true;
   }
 
-  async function prepareClassPayment(session, mode = "hosted") {
+  async function prepareClassPayment(session) {
     const seatNumbers = [...selectedSeatNumbers];
     if (!seatNumbers.length || classPaymentRetrySeconds > 0) return;
     const email = contactEmail.trim().toLowerCase();
@@ -617,78 +547,35 @@ export default function ClassBookings() {
     } finally {
       if (!paymentToLaunch) setBusySeat("");
     }
-    if (paymentToLaunch) await launchCashfreeCheckout(paymentToLaunch, mode);
+    if (paymentToLaunch) await launchCustomCheckout(paymentToLaunch);
   }
 
-  async function launchCashfreeCheckout(payment, mode = "hosted") {
-    const flowId = ++checkoutFlowRef.current;
-    if (mode === "custom") {
-      try {
-        sessionStorage.setItem(
-          CUSTOM_CHECKOUT_STORAGE_KEY,
-          JSON.stringify({
-            userId: user.id,
-            classId: payment.classId,
-            paymentOrderId: payment.paymentOrderId,
-            seatNumbers: payment.seatNumbers,
-            expiresAt: payment.expiresAt,
-            email: contactEmail.trim().toLowerCase(),
-            phone: contactPhone.trim(),
-          }),
-        );
-      } catch (error) {
-        setNotice({
-          type: "error",
-          message:
-            error.message ||
-            "Could not save your checkout for recovery after a refresh.",
-        });
-        return;
-      }
-    }
-    setCheckoutMode(mode);
-    setCheckoutActive(true);
-    if (mode === "custom") {
-      setBusySeat("");
-      setNotice({ type: "", message: "" });
-      return;
-    }
-    setBusySeat("checkout");
-    setNotice({ type: "", message: "Opening secure checkout…" });
-    let checkoutResult;
+  async function launchCustomCheckout(payment) {
     try {
-      const checkoutPromise = openCashfreeCheckout(
-        payment.paymentSessionId,
-        payment.environment,
+      sessionStorage.setItem(
+        CUSTOM_CHECKOUT_STORAGE_KEY,
+        JSON.stringify({
+          userId: user.id,
+          classId: payment.classId,
+          paymentOrderId: payment.paymentOrderId,
+          seatNumbers: payment.seatNumbers,
+          expiresAt: payment.expiresAt,
+          email: contactEmail.trim().toLowerCase(),
+          phone: contactPhone.trim(),
+        }),
       );
-      setCheckoutActive(false);
-      setBusySeat("");
-      setNotice({
-        type: "",
-        message:
-          "Cashfree checkout is open. If you close it, you can resume payment while your seat hold is active.",
-      });
-      checkoutResult = await checkoutPromise;
     } catch (error) {
-      if (flowId !== checkoutFlowRef.current) return;
-      setCheckoutActive(false);
       setNotice({
         type: "error",
         message:
           error.message ||
-          "Could not open Cashfree checkout. Please try again.",
+          "Could not save your checkout for recovery after a refresh.",
       });
-      setBusySeat("");
       return;
     }
-    if (flowId !== checkoutFlowRef.current) return;
-    if (checkoutResult?.error && !checkoutResult.paymentDetails) {
-      setCheckoutActive(false);
-      await confirmPaymentExit();
-      return;
-    }
-    setCheckoutActive(false);
-    await verifyPendingClassPayment(payment);
+    setCheckoutActive(true);
+    setBusySeat("");
+    setNotice({ type: "", message: "" });
   }
 
   async function verifyPendingClassPayment(payment) {
@@ -710,14 +597,7 @@ export default function ClassBookings() {
       } else if (verification.paymentStatus === "failed") {
         sessionStorage.removeItem(CUSTOM_CHECKOUT_STORAGE_KEY);
         setCheckoutActive(false);
-        setPendingClassPayment(null);
-        setSelectedSeatNumbers([]);
-        setBookingStep("seats");
-        setNotice({
-          type: "error",
-          message:
-            "Payment was not completed. The selected seats are available again.",
-        });
+        setBookingStep("payment");
       } else {
         setNotice({
           type: "error",
@@ -725,7 +605,39 @@ export default function ClassBookings() {
             "Cashfree has not confirmed the payment yet. Your seats are temporarily held, not booked.",
         });
       }
-      await Promise.all([loadSessions({ quiet: true }), loadPaymentHolds()]);
+      const [refreshedSessions] = await Promise.all([
+        loadSessions({ quiet: true }),
+        loadPaymentHolds(),
+      ]);
+      if (verification.paymentStatus === "failed") {
+        const currentSession = refreshedSessions?.find(
+          (session) => session._id === classId,
+        );
+        const availableSeats = seatNumbers.filter((number) =>
+          currentSession?.seats.some(
+            (seat) =>
+              seat.seatNumber === number && seat.status === "available",
+          ),
+        );
+        setPendingClassPayment(null);
+        if (availableSeats.length === seatNumbers.length) {
+          setSelectedSeatNumbers(availableSeats);
+          setBookingStep("payment");
+          setNotice({
+            type: "error",
+            message:
+              "Payment was not completed. Your seats are available again; choose Custom Card / UPI to retry.",
+          });
+        } else {
+          setSelectedSeatNumbers([]);
+          setBookingStep("seats");
+          setNotice({
+            type: "error",
+            message:
+              "Payment was not completed. Some seats are no longer available; please select available seats again.",
+          });
+        }
+      }
       setBusySeat("");
       if (verification.paymentStatus === "pending") {
         const pollId = window.setInterval(() => {
@@ -748,9 +660,9 @@ export default function ClassBookings() {
     }
   }
 
-  function continueToCashfree(mode = "hosted") {
+  function continueCustomCheckout() {
     if (pendingClassPayment)
-      void launchCashfreeCheckout(pendingClassPayment, mode);
+      void launchCustomCheckout(pendingClassPayment);
   }
 
   function requestPaymentExit() {
@@ -767,41 +679,18 @@ export default function ClassBookings() {
   async function confirmPaymentExit() {
     const paymentStatus = await cancelPendingClassPayment();
     if (!paymentStatus) return;
-    if (checkoutMode === "custom") {
-      setShowExitConfirm(false);
-      setExitFromCheckout(false);
-      setCheckoutActive(false);
-      if (paymentStatus === "cancelled") {
-        setBookingStep("payment");
-        setNotice({
-          type: "",
-          message: "Seat hold released. Select Make payment to continue.",
-        });
-      }
-      await Promise.all([loadSessions({ quiet: true }), loadPaymentHolds()]);
-      return;
-    }
-    try {
-      sessionStorage.setItem(
-        "class-payment-page-return",
-        JSON.stringify({
-          classId: pendingClassPayment.classId,
-          seatNumbers: pendingClassPayment.seatNumbers,
-          email: contactEmail,
-          phone: contactPhone,
-          paymentStatus,
-        }),
-      );
-    } catch (error) {
+    setShowExitConfirm(false);
+    setExitFromCheckout(false);
+    setCheckoutActive(false);
+    await Promise.all([loadSessions({ quiet: true }), loadPaymentHolds()]);
+    if (paymentStatus === "cancelled") {
+      setPendingClassPayment(null);
+      setBookingStep("payment");
       setNotice({
-        type: "error",
-        message:
-          error.message ||
-          "Could not safely return to the payment page. Please close Cashfree and try again.",
+        type: "",
+        message: "Seat hold released. Select Make payment to continue.",
       });
-      return;
     }
-    window.location.reload();
   }
 
   async function cancelPendingClassPayment() {
@@ -825,7 +714,6 @@ export default function ClassBookings() {
         return "paid";
       } else {
         sessionStorage.removeItem(CUSTOM_CHECKOUT_STORAGE_KEY);
-        setPendingClassPayment(null);
         return "cancelled";
       }
     } catch (error) {
@@ -841,7 +729,7 @@ export default function ClassBookings() {
     }
   }
 
-  async function resumePayment(hold, mode = "hosted") {
+  async function resumePayment(hold) {
     setBusySeat(hold.paymentOrderId);
     setNotice({ type: "", message: "Checking your seat hold and payment…" });
     try {
@@ -874,7 +762,7 @@ export default function ClassBookings() {
         setSelectedSeatNumbers(hold.seatNumbers);
         setBookingStep("payment");
         await new Promise((resolve) => window.requestAnimationFrame(resolve));
-        await launchCashfreeCheckout(payment, mode);
+        await launchCustomCheckout(payment);
         return;
       }
       await Promise.all([loadSessions({ quiet: true }), loadPaymentHolds()]);
@@ -927,11 +815,10 @@ export default function ClassBookings() {
         </div>
       )}
       {checkoutActive &&
-        checkoutMode === "custom" &&
         pendingClassPayment &&
         selectedSession &&
         createPortal(
-          <ClassCashfreeCheckout
+          <CashfreeCustomCheckout
             payment={pendingClassPayment}
             sessionTitle={selectedSession.title}
             price={selectedSession.price}
@@ -980,7 +867,7 @@ export default function ClassBookings() {
               <div className="class-exit-actions">
                 <button
                   type="button"
-                  className="btn btn-outline"
+                  className="btn class-flow-button class-flow-button--green"
                   disabled={busySeat === "cancel"}
                   onClick={continuePaymentAfterPrompt}
                 >
@@ -988,7 +875,7 @@ export default function ClassBookings() {
                 </button>
                 <button
                   type="button"
-                  className="btn btn-dark"
+                  className="btn class-flow-button class-flow-button--danger"
                   disabled={busySeat === "cancel"}
                   onClick={confirmPaymentExit}
                 >
@@ -1011,7 +898,7 @@ export default function ClassBookings() {
               Book your <em>class seat.</em>
             </h1>
             <p>
-              Choose a class, select up to three seats, and pay for them
+              Choose a class, select up to two seats, and pay for them
               together.
             </p>
           </div>
@@ -1062,21 +949,9 @@ export default function ClassBookings() {
                         type="button"
                         className="btn btn-dark class-resume-payment"
                         disabled={Boolean(busySeat)}
-                        onClick={() =>
-                          resumePayment(selectedPaymentHold, "custom")
-                        }
+                        onClick={() => resumePayment(selectedPaymentHold)}
                       >
-                        Custom checkout
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline class-resume-payment"
-                        disabled={Boolean(busySeat)}
-                        onClick={() =>
-                          resumePayment(selectedPaymentHold, "hosted")
-                        }
-                      >
-                        Cashfree hosted
+                        Custom UPI / Card
                       </button>
                     </div>
                   )}
@@ -1112,7 +987,7 @@ export default function ClassBookings() {
                   )}
                   <button
                     type="button"
-                    className="btn btn-dark"
+                    className="btn class-flow-button class-flow-button--green"
                     disabled={!(Number(selectedSession.price) > 0)}
                     onClick={() => setBookingStep("seats")}
                   >
@@ -1120,7 +995,7 @@ export default function ClassBookings() {
                   </button>
                 </div>
                 <p className="payment-hold-note">
-                  Select up to 3 seats. They are reserved only when you submit
+                  Select up to 2 seats. They are reserved only when you submit
                   your contact details to start payment.
                 </p>
               </div>
@@ -1185,7 +1060,7 @@ export default function ClassBookings() {
                 <div className="seat-checkout">
                   <button
                     type="button"
-                    className="btn btn-outline"
+                    className="btn class-flow-button class-flow-button--gold"
                     disabled={Boolean(busySeat)}
                     onClick={() => {
                       setBookingStep("details");
@@ -1208,7 +1083,7 @@ export default function ClassBookings() {
                   </span>
                   <button
                     type="button"
-                    className="btn btn-dark"
+                    className="btn class-flow-button class-flow-button--green"
                     disabled={!selectedSeatNumbers.length || Boolean(busySeat)}
                     onClick={() => {
                       setBookingStep("contact");
@@ -1285,7 +1160,7 @@ export default function ClassBookings() {
                   <div className="class-contact-actions">
                     <button
                       type="button"
-                      className="btn btn-outline"
+                      className="btn class-flow-button class-flow-button--gold"
                       disabled={Boolean(busySeat)}
                       onClick={() => {
                         setBookingStep("seats");
@@ -1296,7 +1171,7 @@ export default function ClassBookings() {
                     </button>
                     <button
                       type="submit"
-                      className="btn btn-dark"
+                      className="btn class-flow-button class-flow-button--green"
                       disabled={
                         !selectedSeatNumbers.length || Boolean(busySeat)
                       }
@@ -1310,7 +1185,7 @@ export default function ClassBookings() {
               <div className="class-payment-panel">
                 <div className="class-payment-heading">
                   <span className="eyebrow">SECURE PAYMENT</span>
-                  <h3>Review and continue to Cashfree</h3>
+                  <h3>Review and pay</h3>
                   <p>
                     {pendingClassPayment?.expiresAt ? (
                       <>
@@ -1369,7 +1244,7 @@ export default function ClassBookings() {
                 <div className="class-contact-actions">
                   <button
                     type="button"
-                    className="btn btn-outline"
+                    className="btn class-flow-button class-flow-button--gold"
                     disabled={Boolean(busySeat)}
                     onClick={() => {
                       if (pendingClassPayment) {
@@ -1385,7 +1260,7 @@ export default function ClassBookings() {
                   <div className="class-checkout-options">
                     <button
                       type="button"
-                      className="btn btn-dark"
+                      className="btn class-flow-button class-flow-button--gold"
                       disabled={
                         Boolean(busySeat) ||
                         classPaymentRetrySeconds > 0 ||
@@ -1395,33 +1270,15 @@ export default function ClassBookings() {
                       }
                       onClick={() =>
                         pendingClassPayment
-                          ? continueToCashfree("custom")
-                          : void prepareClassPayment(selectedSession, "custom")
+                          ? continueCustomCheckout()
+                          : void prepareClassPayment(selectedSession)
                       }
                     >
                       {busySeat === "checkout"
                         ? "Opening checkout…"
                         : classPaymentRetrySeconds > 0
                           ? `Try again in ${formatRetryCountdown(classPaymentRetrySeconds)}`
-                          : "Custom Card / UPI"}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-outline"
-                      disabled={
-                        Boolean(busySeat) ||
-                        classPaymentRetrySeconds > 0 ||
-                        !selectedSeatNumbers.length ||
-                        (pendingClassPayment &&
-                          new Date(pendingClassPayment.expiresAt) <= new Date())
-                      }
-                      onClick={() =>
-                        pendingClassPayment
-                          ? continueToCashfree("hosted")
-                          : void prepareClassPayment(selectedSession, "hosted")
-                      }
-                    >
-                      Cashfree hosted checkout
+                          : "Pay"}
                     </button>
                   </div>
                 </div>

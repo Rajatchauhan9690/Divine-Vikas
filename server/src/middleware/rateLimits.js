@@ -27,6 +27,19 @@ export const authLimiter = rateLimit({
     message: "Too many authentication attempts. Try again later.",
   },
 });
+export const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  skip: (req) => !req.cookies?.refreshToken,
+  message: {
+    success: false,
+    code: "REFRESH_RATE_LIMITED",
+    message: "Too many session refresh attempts. Please sign in again later.",
+  },
+});
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 6,
@@ -37,6 +50,28 @@ export const loginLimiter = rateLimit({
     success: false,
     code: "LOGIN_RATE_LIMITED",
     message: "Too many login attempts. Try again later.",
+  },
+});
+export const passwordResetRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: {
+    success: false,
+    code: "PASSWORD_RESET_RATE_LIMITED",
+    message: "Too many password reset requests. Please try again later.",
+  },
+});
+export const passwordResetVerificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: {
+    success: false,
+    code: "PASSWORD_RESET_VERIFY_RATE_LIMITED",
+    message: "Too many code verification attempts. Please try again later.",
   },
 });
 const classBookingRateLimitMessage = {

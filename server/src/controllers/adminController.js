@@ -250,7 +250,6 @@ export const createOrderShipment = asyncHandler(async (req, res) => {
     order.shipping.labelUrl = String(labelUrl);
   }
   order.status = "shipped";
-  order.addressChangeAllowed = false;
   order.statusHistory.push({
     status: "shipped",
     note: "Shipment created and label generated through Shiprocket",
