@@ -11,6 +11,10 @@ process.env.MONGODB_URI = 'mongodb://127.0.0.1:27017/test-placeholder';
 process.env.ACCESS_TOKEN_SECRET = 'test-access-secret-that-is-long-enough-123456';
 process.env.REFRESH_TOKEN_SECRET = 'test-refresh-secret-that-is-long-enough-123456';
 process.env.CLIENT_ORIGIN = 'http://localhost:5173';
+process.env.SMTP_HOST = '';
+process.env.SMTP_USER = '';
+process.env.SMTP_PASSWORD = '';
+process.env.SMTP_FROM = '';
 
 let mongo;
 let app;
@@ -276,6 +280,94 @@ test('password reset verifies a delivered OTP and revokes existing sessions', as
         password: 'NewStrongPass123!',
       })
       .expect(200);
+  } finally {
+    await new Promise(resolve => smtp.server.close(resolve));
+    for (const key of envKeys) {
+      if (originalEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = originalEnv[key];
+    }
+  }
+});
+
+test('confirmed orders and class bookings send one confirmation email each', async () => {
+  const customer = await registerUser('confirmation-email@example.com');
+  const messages = [];
+  const smtp = await startSmtpCapture(messages);
+  const envKeys = [
+    'SMTP_HOST',
+    'SMTP_PORT',
+    'SMTP_SECURE',
+    'SMTP_USER',
+    'SMTP_PASSWORD',
+    'SMTP_FROM',
+  ];
+  const originalEnv = Object.fromEntries(
+    envKeys.map(key => [key, process.env[key]]),
+  );
+  process.env.SMTP_HOST = '127.0.0.1';
+  process.env.SMTP_PORT = String(smtp.port);
+  process.env.SMTP_SECURE = 'false';
+  process.env.SMTP_USER = '';
+  process.env.SMTP_PASSWORD = '';
+  process.env.SMTP_FROM = 'Divine Vikas <support@divinevikas.test>';
+
+  try {
+    const product = await Product.create({ name: 'Temple Rose', price: 250 });
+    const order = await Order.create({
+      user: customer.user.id,
+      items: [{ product: product._id, name: product.name, price: 250, quantity: 2 }],
+      total: 500,
+      shippingAddress: {
+        fullName: 'Test User',
+        phone: '9876543210',
+        line1: '1 Main Street',
+        city: 'Pune',
+        state: 'Maharashtra',
+        postalCode: '411001',
+      },
+      paymentMethod: 'cashfree',
+      paymentStatus: 'paid',
+      status: 'paid',
+    });
+    const paymentOrderId = 'class-confirmation-payment';
+    const session = await ClassSession.create({
+      title: 'Fragrance Workshop',
+      instructorName: 'Instructor',
+      startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      price: 300,
+      durationMinutes: 60,
+      seats: ['S01', 'S02'].map(seatNumber => ({
+        seatNumber,
+        status: 'booked',
+        bookedBy: customer.user.id,
+        paymentOrderId,
+      })),
+    });
+    const {
+      notifyClassBookingConfirmation,
+      notifyOrderConfirmation,
+    } = await import('../src/services/emailNotificationService.js');
+
+    await notifyOrderConfirmation(order._id);
+    await notifyClassBookingConfirmation(session._id, paymentOrderId);
+    await notifyOrderConfirmation(order._id);
+    await notifyClassBookingConfirmation(session._id, paymentOrderId);
+
+    assert.equal(messages.length, 2);
+    assert.match(messages[0], /Order #/);
+    assert.match(messages[0], /Temple Rose/);
+    assert.match(messages[1], /Your class booking is confirmed/);
+    assert.match(messages[1], /S01, S02/);
+    assert.equal(
+      (await Order.findById(order._id)).emailNotification.status,
+      'sent',
+    );
+    const confirmedSession = await ClassSession.findById(session._id);
+    assert.ok(
+      confirmedSession.seats.every(
+        seat => seat.emailNotification.status === 'sent',
+      ),
+    );
   } finally {
     await new Promise(resolve => smtp.server.close(resolve));
     for (const key of envKeys) {

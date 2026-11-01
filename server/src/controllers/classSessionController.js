@@ -9,6 +9,7 @@ import {
   cashfreeRequest,
 } from "../services/cashfreeService.js";
 import { sendClassWhatsApp } from "../services/whatsappService.js";
+import { notifyClassBookingConfirmation } from "../services/emailNotificationService.js";
 
 const holdDurationMs = 20 * 60 * 1000;
 const terminalPaymentStatuses = new Set([
@@ -18,6 +19,16 @@ const terminalPaymentStatuses = new Set([
   "CANCELLED",
   "VOID",
 ]);
+
+function queueClassBookingConfirmationEmail(sessionId, paymentOrderId) {
+  void notifyClassBookingConfirmation(sessionId, paymentOrderId).catch(
+    (error) =>
+      console.error("Could not process class booking confirmation email", {
+        paymentOrderId,
+        code: error.code || "EMAIL_SEND_FAILED",
+      }),
+  );
+}
 
 function validClassId(classId) {
   if (!mongoose.isValidObjectId(classId))
@@ -720,6 +731,7 @@ async function verifyClassPayment(req, classId, paymentOrderId, seatNumber) {
   )
     throw new AppError("Seat payment not found", 404, "BOOKING_NOT_FOUND");
   if (orderSeats.every((item) => item.status === "booked")) {
+    queueClassBookingConfirmationEmail(session._id, paymentOrderId);
     void sendClassWhatsApp(session._id, paymentOrderId).catch((error) =>
       console.error("Could not process WhatsApp class notification", {
         paymentOrderId,
@@ -782,6 +794,7 @@ async function verifyClassPayment(req, classId, paymentOrderId, seatNumber) {
         "PAYMENT_AFTER_HOLD_EXPIRY",
       );
     await releaseClassPaymentHold(req.user._id, paymentOrderId);
+    queueClassBookingConfirmationEmail(classId, paymentOrderId);
     void sendClassWhatsApp(classId, paymentOrderId).catch((error) =>
       console.error("Could not process WhatsApp class notification", {
         paymentOrderId,
@@ -1044,6 +1057,7 @@ export const processClassPaymentWebhook = async ({
     if (result.confirmed) {
       const accountId = seat.bookedBy;
       await releaseClassPaymentHold(accountId, paymentOrderId);
+      queueClassBookingConfirmationEmail(session._id, paymentOrderId);
       void sendClassWhatsApp(session._id, paymentOrderId).catch((error) =>
         console.error("Could not process WhatsApp class notification", {
           paymentOrderId,

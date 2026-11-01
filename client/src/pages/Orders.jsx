@@ -191,8 +191,13 @@ export default function Orders() {
         Track each order, review its delivery address and check payment status.
       </p>
       <p className="orders-support-link">
-        Need help with an order?{" "}
-        <Link to="/support">Contact customer support</Link>.
+        Need help with an order?
+        <Link
+          className="btn class-flow-button class-flow-button--green"
+          to="/support"
+        >
+          Contact customer support
+        </Link>
       </p>
       {notice && <p className="notice">{notice}</p>}
       {error && <p className="notice error">{error}</p>}

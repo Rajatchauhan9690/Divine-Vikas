@@ -2,6 +2,16 @@ import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import ProductPaymentAttempt from "../models/ProductPaymentAttempt.js";
 import { sendOrderWhatsApp } from "./whatsappService.js";
+import { notifyOrderConfirmation } from "./emailNotificationService.js";
+
+function queueOrderConfirmationEmail(orderId) {
+  void notifyOrderConfirmation(orderId).catch((error) =>
+    console.error("Could not process order confirmation email", {
+      orderId: String(orderId),
+      code: error.code || "EMAIL_SEND_FAILED",
+    }),
+  );
+}
 
 async function restoreInventory(attempt) {
   for (const item of attempt.items) {
@@ -76,7 +86,11 @@ async function reserveInventory(items) {
 }
 
 export async function createOrderForPaidAttempt(attempt, paymentId) {
-  if (attempt.order) return Order.findById(attempt.order);
+  if (attempt.order) {
+    const existingOrder = await Order.findById(attempt.order);
+    if (existingOrder) queueOrderConfirmationEmail(existingOrder._id);
+    return existingOrder;
+  }
   const existingOrder = await Order.findOne({
     "payment.providerOrderId": attempt.providerOrderId,
   });
@@ -92,6 +106,7 @@ export async function createOrderForPaidAttempt(attempt, paymentId) {
         },
       },
     );
+    queueOrderConfirmationEmail(existingOrder._id);
     return existingOrder;
   }
 
@@ -171,6 +186,7 @@ export async function createOrderForPaidAttempt(attempt, paymentId) {
       code: error.code || "WHATSAPP_SEND_FAILED",
     }),
   );
+  queueOrderConfirmationEmail(order._id);
   return order;
 }
 

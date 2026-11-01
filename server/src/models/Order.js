@@ -117,6 +117,15 @@ const schema = new mongoose.Schema(
       error: { type: String, default: "" },
       sentAt: Date,
     },
+    emailNotification: {
+      status: {
+        type: String,
+        enum: ["not_requested", "sending", "sent", "failed"],
+        default: "not_requested",
+      },
+      error: { type: String, default: "" },
+      sentAt: Date,
+    },
     tracking: {
       courier: String,
       trackingNumber: String,

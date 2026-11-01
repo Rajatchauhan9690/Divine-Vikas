@@ -29,6 +29,15 @@ const seatSchema = new mongoose.Schema(
       error: { type: String, default: "" },
       sentAt: Date,
     },
+    emailNotification: {
+      status: {
+        type: String,
+        enum: ["not_requested", "sending", "sent", "failed"],
+        default: "not_requested",
+      },
+      error: { type: String, default: "" },
+      sentAt: Date,
+    },
   },
   { _id: false },
 );

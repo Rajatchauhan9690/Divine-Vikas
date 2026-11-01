@@ -12,6 +12,14 @@
 }
 * {
   box-sizing: border-box;
+  -webkit-user-select: none;
+  user-select: none;
+}
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 html {
   scroll-behavior: smooth;
@@ -228,11 +236,21 @@ h1 em {
 .btn:hover {
   transform: translateY(-2px);
 }
+.auth-page .btn:hover {
+  transform: none;
+}
 .btn-dark {
   background: #123f32;
   color: #fff;
 }
 .btn-dark:hover {
+  background: #1c5947;
+}
+.auth-page .btn-dark {
+  background: #123f32;
+  color: #fff;
+}
+.auth-page .btn-dark:hover {
   background: #1c5947;
 }
 .btn-outline {
@@ -999,7 +1017,7 @@ textarea {
   font-size: 16px;
   color: #858980;
   line-height: 1.6;
-  margin-bottom: 27px;
+  margin-bottom: 10px;
 }
 .form-stack {
   display: grid;
@@ -1061,9 +1079,64 @@ textarea {
   text-align: center;
   color: #96998f;
   font-size: 12px;
+  margin-top: 10px;
 }
 .password-reset-stage {
   animation: password-reset-enter 220ms ease-out both;
+}
+.auth-password-reset .auth-form-wrap {
+  padding: 32px;
+}
+.auth-password-reset .auth-topbar {
+  margin-bottom: 22px;
+}
+.auth-password-reset .auth-form-wrap h1 {
+  margin: 16px 0 10px;
+}
+.auth-password-reset .auth-form-wrap > p {
+  margin-bottom: 20px;
+}
+.auth-password-reset .form-stack {
+  gap: 14px;
+}
+.auth-password-reset .form-stack label {
+  gap: 7px;
+}
+.auth-password-reset .form-stack input {
+  padding: 11px 12px;
+}
+.auth-password-reset .form-stack .btn {
+  min-height: 42px;
+  margin-top: 3px;
+}
+.password-reset-instructions {
+  font-size: 14px;
+}
+.auth-password-reset .auth-form-wrap--verify {
+  padding: 24px 32px;
+}
+.auth-password-reset .auth-form-wrap--verify .auth-topbar {
+  margin-bottom: 18px;
+}
+.password-reset-stage--verify h1 {
+  margin: 12px 0 8px;
+}
+.password-reset-stage--verify .password-reset-instructions {
+  margin-bottom: 14px;
+}
+.password-reset-stage--verify .form-stack {
+  gap: 12px;
+}
+.password-reset-stage--verify .form-stack label {
+  gap: 6px;
+}
+.password-reset-stage--verify .form-stack input {
+  min-height: 42px;
+  padding: 10px 12px;
+}
+.password-reset-stage--verify .form-stack .btn {
+  min-height: 42px;
+  margin-top: 2px;
 }
 @keyframes password-reset-enter {
   from {
@@ -2496,6 +2569,35 @@ textarea {
     min-height: 48px;
     margin-top: 2px;
   }
+  .auth-password-reset .auth-form-wrap {
+    padding: 18px 18px;
+  }
+  .auth-password-reset .auth-topbar {
+    margin-bottom: 12px;
+  }
+  .auth-password-reset .auth-form-wrap h1 {
+    margin: 8px 0 5px;
+  }
+  .auth-password-reset .auth-form-wrap > p {
+    margin-bottom: 12px;
+    font-size: 14px;
+  }
+  .auth-password-reset .form-stack {
+    gap: 9px;
+  }
+  .auth-password-reset .form-stack input {
+    min-height: 42px;
+    padding: 8px 11px;
+  }
+  .auth-password-reset .form-stack .btn {
+    min-height: 42px;
+  }
+  .auth-password-reset .auth-form-wrap--verify {
+    padding: 20px 18px;
+  }
+  .auth-password-reset .auth-form-wrap--verify .auth-topbar {
+    margin-bottom: 14px;
+  }
   .auth-switch {
     margin: 12px 0 0 !important;
     font-size: 14px !important;
@@ -2704,8 +2806,59 @@ textarea {
     margin-bottom: 12px;
     font-size: 15px;
   }
+  .auth-password-reset .auth-form-wrap {
+    padding: 10px 14px;
+  }
+  .auth-password-reset .auth-topbar {
+    margin-bottom: 7px;
+  }
+  .auth-password-reset .auth-form-wrap h1 {
+    font-size: clamp(28px, 8vw, 32px);
+    margin: 5px 0 3px;
+  }
+  .auth-password-reset .auth-form-wrap > p {
+    margin-bottom: 8px;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .auth-password-reset .form-stack {
+    gap: 6px;
+  }
+  .auth-password-reset .form-stack label {
+    gap: 3px;
+  }
+  .auth-password-reset .form-stack input {
+    min-height: 36px;
+    padding: 6px 10px;
+  }
+  .auth-password-reset .form-stack .btn {
+    min-height: 38px;
+  }
+  .auth-password-reset .auth-form-wrap--verify {
+    padding: 8px 14px;
+  }
+  .auth-password-reset .auth-form-wrap--verify .auth-topbar {
+    margin-bottom: 5px;
+  }
+  .password-reset-stage--verify h1 {
+    margin: 4px 0 3px;
+  }
+  .password-reset-stage--verify .password-reset-instructions {
+    margin-bottom: 6px;
+    line-height: 1.3;
+  }
+  .password-reset-stage--verify .form-stack {
+    gap: 5px;
+  }
+  .password-reset-stage--verify .form-stack input {
+    min-height: 34px;
+    padding: 5px 10px;
+  }
+  .password-reset-stage--verify .form-stack .btn {
+    min-height: 36px;
+  }
   .form-stack {
-    gap: 9px;
+    gap: 10px;
   }
   .form-stack label {
     gap: 4px;
@@ -4005,7 +4158,9 @@ body.cashfree-checkout-active .footer {
   border-radius: 999px;
   background: #fffdf9;
   color: #34493b;
-  font: 600 14px "DM Sans", sans-serif;
+  font:
+    600 14px "DM Sans",
+    sans-serif;
 }
 .class-custom-checkout-heading {
   grid-column: 2;
@@ -4022,7 +4177,9 @@ body.cashfree-checkout-active .footer {
 .class-custom-checkout-heading h2 {
   margin: 6px 0;
   color: #23382d;
-  font: clamp(25px, 3.5vw, 34px)/1.2 "Playfair Display", serif;
+  font:
+    clamp(25px, 3.5vw, 34px)/1.2 "Playfair Display",
+    serif;
 }
 .class-custom-checkout-heading p {
   margin: 0;
@@ -4049,7 +4206,9 @@ body.cashfree-checkout-active .footer {
 .class-custom-order-summary h3 {
   margin: 12px 0 8px;
   color: #23382d;
-  font: 22px/1.3 "Playfair Display", serif;
+  font:
+    22px/1.3 "Playfair Display",
+    serif;
 }
 .class-custom-order-summary p {
   margin: 6px 0;
@@ -4103,7 +4262,9 @@ body.cashfree-checkout-active .footer {
   border-radius: 6px;
   background: #fffdf9;
   color: #526357;
-  font: 600 13px "DM Sans", sans-serif;
+  font:
+    600 13px "DM Sans",
+    sans-serif;
 }
 .class-custom-methods button.selected {
   border-color: #315e44;
@@ -4158,7 +4319,9 @@ body.cashfree-checkout-active .footer {
   border-radius: 5px;
   background: #fffdf9;
   color: #1c2c25;
-  font: 14px "DM Sans", sans-serif;
+  font:
+    14px "DM Sans",
+    sans-serif;
 }
 .class-custom-alternative-field > div {
   display: flex;
@@ -4312,13 +4475,15 @@ body.cashfree-checkout-active .footer {
   color: #315e44;
 }
 .class-flow-button--green:hover:not(:disabled),
-.class-custom-payment .class-custom-pay.class-flow-button--green:hover:not(:disabled) {
+.class-custom-payment
+  .class-custom-pay.class-flow-button--green:hover:not(:disabled) {
   border-color: #78977f;
   background: linear-gradient(180deg, #dce9dc, #cbdccb);
   color: #244b35;
 }
 .class-flow-button--green:active:not(:disabled),
-.class-custom-payment .class-custom-pay.class-flow-button--green:active:not(:disabled) {
+.class-custom-payment
+  .class-custom-pay.class-flow-button--green:active:not(:disabled) {
   transform: translateY(1px);
   border-color: #52775d;
   background: linear-gradient(180deg, #c4d7c6, #b2cbb5);
@@ -4748,9 +4913,16 @@ body.cashfree-checkout-active .footer {
   line-height: 1.7;
 }
 .orders-support-link {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   margin: -8px 0 20px;
   color: #69736a;
   font-size: 14px;
+}
+.orders-support-link a {
+  text-decoration: none;
 }
 .orders-support-link a,
 .order-summary > small a {
