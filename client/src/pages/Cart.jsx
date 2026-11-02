@@ -438,7 +438,7 @@ export default function Cart() {
                 <small>UPI, cards and supported payment methods</small>
               </span>
             </div>
-            <label className="whatsapp-opt-in">
+            {/* <label className="whatsapp-opt-in">
               <input
                 type="checkbox"
                 checked={whatsappOptIn}
@@ -449,14 +449,12 @@ export default function Cart() {
               This is optional. Messages are sent only when WhatsApp Business
               messaging is configured.
             </label>
-            {message && <p className="notice error">{message}</p>}
+            {message && <p className="notice error">{message}</p>} */}
             <button
               className="btn class-flow-button class-flow-button--gold btn-full"
               disabled={busy}
             >
-              {busy
-                ? "Processing…"
-                : "Continue to payment"}
+              {busy ? "Processing…" : "Continue to payment"}
             </button>
           </aside>
         </form>

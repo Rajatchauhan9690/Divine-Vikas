@@ -187,31 +187,32 @@ export default function AdminOrders() {
       setBusy("");
     }
   }
-  async function retryWhatsApp(order) {
-    setBusy(order._id);
-    try {
-      const { data } = await api.post(
-        `/admin/orders/${order._id}/whatsapp/retry`,
-      );
-      await load();
-      setToast({
-        type: data.status === "sent" ? "success" : "error",
-        text:
-          data.status === "sent"
-            ? "WhatsApp order confirmation sent."
-            : data.order.whatsapp.error ||
-              "Customer must opt in and WhatsApp templates must be configured.",
-      });
-    } catch (error) {
-      setToast({
-        type: "error",
-        text:
-          error.response?.data?.message || "Could not retry WhatsApp message",
-      });
-    } finally {
-      setBusy("");
-    }
-  }
+  // WhatsApp order retries are temporarily disabled.
+  // async function retryWhatsApp(order) {
+  //   setBusy(order._id);
+  //   try {
+  //     const { data } = await api.post(
+  //       `/admin/orders/${order._id}/whatsapp/retry`,
+  //     );
+  //     await load();
+  //     setToast({
+  //       type: data.status === "sent" ? "success" : "error",
+  //       text:
+  //         data.status === "sent"
+  //           ? "WhatsApp order confirmation sent."
+  //           : data.order.whatsapp.error ||
+  //             "Customer must opt in and WhatsApp templates must be configured.",
+  //     });
+  //   } catch (error) {
+  //     setToast({
+  //       type: "error",
+  //       text:
+  //         error.response?.data?.message || "Could not retry WhatsApp message",
+  //     });
+  //   } finally {
+  //     setBusy("");
+  //   }
+  // }
   return (
     <div className="admin-orders">
       <div className="admin-list-head">
@@ -456,6 +457,7 @@ function OrderRow({
                 {order.whatsapp.status === "failed" && order.whatsapp.error
                   ? ` — ${order.whatsapp.error}`
                   : ""}
+                {/* WhatsApp order retries are temporarily disabled.
                 {order.whatsapp.status === "failed" && (
                   <button
                     type="button"
@@ -465,7 +467,7 @@ function OrderRow({
                   >
                     Retry WhatsApp message
                   </button>
-                )}
+                )} */}
               </div>
             )}
           <label>

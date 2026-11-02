@@ -1,7 +1,7 @@
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import ProductPaymentAttempt from "../models/ProductPaymentAttempt.js";
-import { sendOrderWhatsApp } from "./whatsappService.js";
+// import { sendOrderWhatsApp } from "./whatsappService.js";
 import { notifyOrderConfirmation } from "./emailNotificationService.js";
 
 function queueOrderConfirmationEmail(orderId) {
@@ -180,12 +180,13 @@ export async function createOrderForPaidAttempt(attempt, paymentId) {
     { _id: claimed._id, status: "processing" },
     { $set: { status: "order_created", order: order._id } },
   );
-  void sendOrderWhatsApp(order._id).catch((error) =>
-    console.error("Could not process WhatsApp order notification", {
-      orderId: String(order._id),
-      code: error.code || "WHATSAPP_SEND_FAILED",
-    }),
-  );
+  // WhatsApp order notifications are temporarily disabled.
+  // void sendOrderWhatsApp(order._id).catch((error) =>
+  //   console.error("Could not process WhatsApp order notification", {
+  //     orderId: String(order._id),
+  //     code: error.code || "WHATSAPP_SEND_FAILED",
+  //   }),
+  // );
   queueOrderConfirmationEmail(order._id);
   return order;
 }

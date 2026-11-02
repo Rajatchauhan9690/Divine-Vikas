@@ -457,7 +457,7 @@ test('two concurrent users cannot book the same class seat', async () => {
   }
 });
 
-test('verified class payment confirms the seat', async () => {
+test('verified class payment confirms the seat without sending WhatsApp', async () => {
   const customer = await registerUser('class-payment@example.com');
   await User.findByIdAndUpdate(customer.user.id, {
     phone: '9876543210',
@@ -504,14 +504,9 @@ test('verified class payment confirms the seat', async () => {
       .expect(200);
     assert.equal(response.body.paymentStatus, 'paid');
     assert.equal((await ClassSession.findById(session._id)).seats[0].status, 'booked');
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const current = await ClassSession.findById(session._id);
-      if (current.seats[0].whatsapp.status === 'sent') break;
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
     const confirmedSeat = (await ClassSession.findById(session._id)).seats[0];
-    assert.equal(confirmedSeat.whatsapp.status, 'sent');
-    assert.equal(confirmedSeat.whatsapp.messageId, 'wamid.class-confirmation');
+    assert.equal(confirmedSeat.whatsapp.status, 'not_requested');
+    assert.equal(confirmedSeat.whatsapp.messageId, '');
   } finally {
     globalThis.fetch = originalFetch;
     if (originalClientId === undefined) delete process.env.CASHFREE_CLIENT_ID;

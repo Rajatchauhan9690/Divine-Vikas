@@ -5,7 +5,7 @@ import {
   listOrderCouriers,
   listAdminOrders,
   listAdminProducts,
-  retryOrderWhatsApp,
+  // retryOrderWhatsApp,
 } from "../controllers/adminController.js";
 import {
   adminCancelOrder,
@@ -34,7 +34,8 @@ r.post("/orders/:orderId/cancel", adminCancelOrder);
 r.patch("/orders/:orderId/return", adminUpdateOrderReturn);
 r.get("/orders/:orderId/couriers", listOrderCouriers);
 r.post("/orders/:orderId/shipment", createOrderShipment);
-r.post("/orders/:orderId/whatsapp/retry", retryOrderWhatsApp);
+// WhatsApp order notifications are temporarily disabled.
+// r.post("/orders/:orderId/whatsapp/retry", retryOrderWhatsApp);
 r.get("/classes", listAdminClassSessions);
 r.post("/classes", createClassSession);
 r.put("/classes/:classId", updateClassSession);

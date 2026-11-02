@@ -231,9 +231,7 @@ export default function ClassBookings() {
       return;
     }
 
-    const session = sessions.find(
-      (item) => item._id === restored.classId,
-    );
+    const session = sessions.find((item) => item._id === restored.classId);
     if (
       !session ||
       typeof restored.classId !== "string" ||
@@ -299,12 +297,11 @@ export default function ClassBookings() {
         const paymentFailed = data.paymentStatus === "failed";
         setNotice({
           type: paymentSucceeded ? "success" : "error",
-          message:
-            paymentSucceeded
-              ? `Payment confirmed. Seat${data.booking.seatNumbers.length > 1 ? "s" : ""} ${data.booking.seatNumbers.join(", ")} ${data.booking.seatNumbers.length > 1 ? "are" : "is"} booked.`
-              : paymentFailed
-                ? `Cashfree reports this payment attempt failed. Seat${data.booking.seatNumbers.length > 1 ? "s" : ""} ${data.booking.seatNumbers.join(", ")} have been released. Select available seats to try again.`
-                : "This checkout is no longer active. Check My bookings before starting another payment.",
+          message: paymentSucceeded
+            ? `Payment confirmed. Seat${data.booking.seatNumbers.length > 1 ? "s" : ""} ${data.booking.seatNumbers.join(", ")} ${data.booking.seatNumbers.length > 1 ? "are" : "is"} booked.`
+            : paymentFailed
+              ? `Cashfree reports this payment attempt failed. Seat${data.booking.seatNumbers.length > 1 ? "s" : ""} ${data.booking.seatNumbers.join(", ")} have been released. Select available seats to try again.`
+              : "This checkout is no longer active. Check My bookings before starting another payment.",
         });
         await Promise.all([loadSessions({ quiet: true }), loadPaymentHolds()]);
       })
@@ -325,7 +322,10 @@ export default function ClassBookings() {
               "Could not restore your checkout. Please try again.",
         });
         if (inactivePayment)
-          await Promise.all([loadSessions({ quiet: true }), loadPaymentHolds()]);
+          await Promise.all([
+            loadSessions({ quiet: true }),
+            loadPaymentHolds(),
+          ]);
       })
       .finally(() => setBusySeat(""));
   }, [
@@ -381,10 +381,7 @@ export default function ClassBookings() {
           : `/classes/${classId}/seats/${encodeURIComponent(seatNumber)}/verify-payment`,
       )
       .then(async ({ data }) => {
-        if (
-          data.paymentStatus === "paid" ||
-          data.paymentStatus === "failed"
-        )
+        if (data.paymentStatus === "paid" || data.paymentStatus === "failed")
           sessionStorage.removeItem(CUSTOM_CHECKOUT_STORAGE_KEY);
         if (data.paymentStatus === "paid")
           setNotice({
@@ -615,8 +612,7 @@ export default function ClassBookings() {
         );
         const availableSeats = seatNumbers.filter((number) =>
           currentSession?.seats.some(
-            (seat) =>
-              seat.seatNumber === number && seat.status === "available",
+            (seat) => seat.seatNumber === number && seat.status === "available",
           ),
         );
         setPendingClassPayment(null);
@@ -661,8 +657,7 @@ export default function ClassBookings() {
   }
 
   function continueCustomCheckout() {
-    if (pendingClassPayment)
-      void launchCustomCheckout(pendingClassPayment);
+    if (pendingClassPayment) void launchCustomCheckout(pendingClassPayment);
   }
 
   function requestPaymentExit() {
@@ -898,8 +893,7 @@ export default function ClassBookings() {
               Book your <em>class seat.</em>
             </h1>
             <p>
-              Choose a class, select up to two seats, and pay for them
-              together.
+              Choose a class, select up to two seats, and pay for them together.
             </p>
           </div>
         </>
@@ -1143,9 +1137,9 @@ export default function ClassBookings() {
                           setContactPhone(event.target.value)
                         }
                       />
-                      <small>Include your country code if needed.</small>
+                      {/* <small>Include your country code if needed.</small> */}
                     </label>
-                    <label className="whatsapp-opt-in">
+                    {/* <label className="whatsapp-opt-in">
                       <input
                         type="checkbox"
                         checked={whatsappOptIn}
@@ -1155,7 +1149,7 @@ export default function ClassBookings() {
                         }
                       />
                       Send booking updates on WhatsApp (optional).
-                    </label>
+                    </label> */}
                   </div>
                   <div className="class-contact-actions">
                     <button

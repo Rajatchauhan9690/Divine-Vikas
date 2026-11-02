@@ -8,7 +8,7 @@ import {
   cashfreeEnvironment,
   cashfreeRequest,
 } from "../services/cashfreeService.js";
-import { sendClassWhatsApp } from "../services/whatsappService.js";
+// import { sendClassWhatsApp } from "../services/whatsappService.js";
 import { notifyClassBookingConfirmation } from "../services/emailNotificationService.js";
 
 const holdDurationMs = 20 * 60 * 1000;
@@ -732,12 +732,13 @@ async function verifyClassPayment(req, classId, paymentOrderId, seatNumber) {
     throw new AppError("Seat payment not found", 404, "BOOKING_NOT_FOUND");
   if (orderSeats.every((item) => item.status === "booked")) {
     queueClassBookingConfirmationEmail(session._id, paymentOrderId);
-    void sendClassWhatsApp(session._id, paymentOrderId).catch((error) =>
-      console.error("Could not process WhatsApp class notification", {
-        paymentOrderId,
-        code: error.code || "WHATSAPP_SEND_FAILED",
-      }),
-    );
+    // WhatsApp class notifications are temporarily disabled.
+    // void sendClassWhatsApp(session._id, paymentOrderId).catch((error) =>
+    //   console.error("Could not process WhatsApp class notification", {
+    //     paymentOrderId,
+    //     code: error.code || "WHATSAPP_SEND_FAILED",
+    //   }),
+    // );
     await releaseClassPaymentHold(req.user._id, paymentOrderId);
     return {
       success: true,
@@ -795,12 +796,12 @@ async function verifyClassPayment(req, classId, paymentOrderId, seatNumber) {
       );
     await releaseClassPaymentHold(req.user._id, paymentOrderId);
     queueClassBookingConfirmationEmail(classId, paymentOrderId);
-    void sendClassWhatsApp(classId, paymentOrderId).catch((error) =>
-      console.error("Could not process WhatsApp class notification", {
-        paymentOrderId,
-        code: error.code || "WHATSAPP_SEND_FAILED",
-      }),
-    );
+    // void sendClassWhatsApp(classId, paymentOrderId).catch((error) =>
+    //   console.error("Could not process WhatsApp class notification", {
+    //     paymentOrderId,
+    //     code: error.code || "WHATSAPP_SEND_FAILED",
+    //   }),
+    // );
     return {
       success: true,
       paymentStatus: "paid",
@@ -1058,12 +1059,12 @@ export const processClassPaymentWebhook = async ({
       const accountId = seat.bookedBy;
       await releaseClassPaymentHold(accountId, paymentOrderId);
       queueClassBookingConfirmationEmail(session._id, paymentOrderId);
-      void sendClassWhatsApp(session._id, paymentOrderId).catch((error) =>
-        console.error("Could not process WhatsApp class notification", {
-          paymentOrderId,
-          code: error.code || "WHATSAPP_SEND_FAILED",
-        }),
-      );
+      // void sendClassWhatsApp(session._id, paymentOrderId).catch((error) =>
+      //   console.error("Could not process WhatsApp class notification", {
+      //     paymentOrderId,
+      //     code: error.code || "WHATSAPP_SEND_FAILED",
+      //   }),
+      // );
     }
   } else if (terminalPaymentStatuses.has(paymentStatus)) {
     await releaseFailedPayment(session, paymentOrderId);
