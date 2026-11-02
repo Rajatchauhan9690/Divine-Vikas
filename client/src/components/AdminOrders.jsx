@@ -187,32 +187,6 @@ export default function AdminOrders() {
       setBusy("");
     }
   }
-  // WhatsApp order retries are temporarily disabled.
-  // async function retryWhatsApp(order) {
-  //   setBusy(order._id);
-  //   try {
-  //     const { data } = await api.post(
-  //       `/admin/orders/${order._id}/whatsapp/retry`,
-  //     );
-  //     await load();
-  //     setToast({
-  //       type: data.status === "sent" ? "success" : "error",
-  //       text:
-  //         data.status === "sent"
-  //           ? "WhatsApp order confirmation sent."
-  //           : data.order.whatsapp.error ||
-  //             "Customer must opt in and WhatsApp templates must be configured.",
-  //     });
-  //   } catch (error) {
-  //     setToast({
-  //       type: "error",
-  //       text:
-  //         error.response?.data?.message || "Could not retry WhatsApp message",
-  //     });
-  //   } finally {
-  //     setBusy("");
-  //   }
-  // }
   return (
     <div className="admin-orders">
       <div className="admin-list-head">
@@ -283,7 +257,6 @@ export default function AdminOrders() {
                 manageReturn={manageReturn}
                 findCouriers={findCouriers}
                 createShipment={createShipment}
-                retryWhatsApp={retryWhatsApp}
               />
             ))}
         </div>
@@ -353,7 +326,6 @@ function OrderRow({
   manageReturn,
   findCouriers,
   createShipment,
-  retryWhatsApp,
 }) {
   const [status, setStatus] = useState(order.status),
     [confirmCancel, setConfirmCancel] = useState(false),
@@ -450,26 +422,6 @@ function OrderRow({
               {cancelledBy.role ? ` (${cancelledBy.role})` : ""}
             </p>
           )}
-          {order.whatsapp?.status &&
-            order.whatsapp.status !== "not_requested" && (
-              <div className="admin-order-audit">
-                WhatsApp order message: {order.whatsapp.status}
-                {order.whatsapp.status === "failed" && order.whatsapp.error
-                  ? ` — ${order.whatsapp.error}`
-                  : ""}
-                {/* WhatsApp order retries are temporarily disabled.
-                {order.whatsapp.status === "failed" && (
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    disabled={busy}
-                    onClick={() => retryWhatsApp(order)}
-                  >
-                    Retry WhatsApp message
-                  </button>
-                )} */}
-              </div>
-            )}
           <label>
             Status
             <select value={status} onChange={(e) => setStatus(e.target.value)}>

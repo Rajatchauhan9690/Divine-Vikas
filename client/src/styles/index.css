@@ -3375,23 +3375,6 @@ textarea {
   border-color: #315e44;
   outline: 2px solid #315e4433;
 }
-.class-contact-form .whatsapp-opt-in {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  color: #69736a;
-  font-weight: 400;
-  line-height: 1.5;
-}
-.class-contact-form .whatsapp-opt-in input {
-  flex: 0 0 18px;
-  width: 18px;
-  min-height: 18px;
-  height: 18px;
-  margin: 1px 0 0;
-  padding: 0;
-  accent-color: #315e44;
-}
 .class-contact-form small {
   font-size: 12px;
   font-weight: 400;
@@ -5143,25 +5126,6 @@ body.cashfree-checkout-active .footer {
 .tracking-info {
   border-top: 1px solid #eee9df;
   padding: 15px 0;
-}
-.whatsapp-opt-in {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: start;
-  gap: 8px;
-  font-size: 14px;
-  line-height: 1.5;
-  margin-bottom: 15px;
-}
-.whatsapp-opt-in input {
-  width: auto;
-  margin-top: 3px;
-}
-.whatsapp-opt-in > span {
-  grid-column: 1 / -1;
-}
-.whatsapp-opt-in > .text-link {
-  justify-self: start;
 }
 .admin-return-settings,
 .admin-order-return,

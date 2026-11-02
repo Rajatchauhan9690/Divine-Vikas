@@ -457,12 +457,9 @@ test('two concurrent users cannot book the same class seat', async () => {
   }
 });
 
-test('verified class payment confirms the seat without sending WhatsApp', async () => {
+test('verified class payment confirms the seat', async () => {
   const customer = await registerUser('class-payment@example.com');
-  await User.findByIdAndUpdate(customer.user.id, {
-    phone: '9876543210',
-    whatsappOptIn: true,
-  });
+  await User.findByIdAndUpdate(customer.user.id, { phone: '9876543210' });
   const session = await ClassSession.create({
     title: 'Paid Class', instructorName: 'Instructor', startsAt: new Date(Date.now() + 60 * 60 * 1000),
     price: 500, durationMinutes: 60, seats: [{ seatNumber: 'S01', status: 'available' }]
@@ -470,20 +467,9 @@ test('verified class payment confirms the seat without sending WhatsApp', async 
   const originalFetch = globalThis.fetch;
   const originalClientId = process.env.CASHFREE_CLIENT_ID;
   const originalClientSecret = process.env.CASHFREE_CLIENT_SECRET;
-  const originalPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  const originalWhatsAppToken = process.env.WHATSAPP_ACCESS_TOKEN;
-  const originalClassTemplate = process.env.WHATSAPP_CLASS_TEMPLATE;
   process.env.CASHFREE_CLIENT_ID = 'test-client-id';
   process.env.CASHFREE_CLIENT_SECRET = 'test-client-secret';
-  process.env.WHATSAPP_PHONE_NUMBER_ID = 'test-phone-id';
-  process.env.WHATSAPP_ACCESS_TOKEN = 'test-whatsapp-token';
-  process.env.WHATSAPP_CLASS_TEMPLATE = 'class_confirmation';
   globalThis.fetch = async (url, options) => {
-    if (String(url).includes('graph.facebook.com'))
-      return new Response(
-        JSON.stringify({ messages: [{ id: 'wamid.class-confirmation' }] }),
-        { status: 200 },
-      );
     if (String(url).endsWith('/payments'))
       return new Response(JSON.stringify([
         { payment_status: 'SUCCESS', payment_amount: 500, cf_payment_id: 'test-payment-id' },
@@ -504,21 +490,12 @@ test('verified class payment confirms the seat without sending WhatsApp', async 
       .expect(200);
     assert.equal(response.body.paymentStatus, 'paid');
     assert.equal((await ClassSession.findById(session._id)).seats[0].status, 'booked');
-    const confirmedSeat = (await ClassSession.findById(session._id)).seats[0];
-    assert.equal(confirmedSeat.whatsapp.status, 'not_requested');
-    assert.equal(confirmedSeat.whatsapp.messageId, '');
   } finally {
     globalThis.fetch = originalFetch;
     if (originalClientId === undefined) delete process.env.CASHFREE_CLIENT_ID;
     else process.env.CASHFREE_CLIENT_ID = originalClientId;
     if (originalClientSecret === undefined) delete process.env.CASHFREE_CLIENT_SECRET;
     else process.env.CASHFREE_CLIENT_SECRET = originalClientSecret;
-    if (originalPhoneId === undefined) delete process.env.WHATSAPP_PHONE_NUMBER_ID;
-    else process.env.WHATSAPP_PHONE_NUMBER_ID = originalPhoneId;
-    if (originalWhatsAppToken === undefined) delete process.env.WHATSAPP_ACCESS_TOKEN;
-    else process.env.WHATSAPP_ACCESS_TOKEN = originalWhatsAppToken;
-    if (originalClassTemplate === undefined) delete process.env.WHATSAPP_CLASS_TEMPLATE;
-    else process.env.WHATSAPP_CLASS_TEMPLATE = originalClassTemplate;
   }
 });
 
@@ -2011,110 +1988,6 @@ test('customers may request an in-window return and Admin refunds after receipt'
     if (originalClientSecret === undefined)
       delete process.env.CASHFREE_CLIENT_SECRET;
     else process.env.CASHFREE_CLIENT_SECRET = originalClientSecret;
-  }
-});
-
-test('WhatsApp confirmations use approved templates and only send to opted-in users', async () => {
-  const customer = await registerUser('whatsapp-opt-in@example.com');
-  await User.updateOne(
-    { _id: customer.user.id },
-    { $set: { phone: '9876543210', whatsappOptIn: true } },
-  );
-  const product = await Product.create({
-    name: 'WhatsApp Product',
-    price: 250,
-    stock: 1,
-  });
-  const order = await Order.create({
-    user: customer.user.id,
-    items: [{ product: product._id, name: product.name, price: 250, quantity: 1 }],
-    total: 250,
-    shippingAddress: {
-      fullName: 'Test User',
-      phone: '9876543210',
-      line1: 'Test Road',
-      city: 'Pune',
-      state: 'Maharashtra',
-      postalCode: '411001',
-    },
-    paymentMethod: 'cashfree',
-    paymentStatus: 'paid',
-    status: 'paid',
-    payment: { providerOrderId: `DV${new mongoose.Types.ObjectId()}` },
-  });
-  const { sendOrderWhatsApp, sendClassWhatsApp } = await import('../src/services/whatsappService.js');
-  const originalFetch = globalThis.fetch;
-  const originalPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  const originalToken = process.env.WHATSAPP_ACCESS_TOKEN;
-  const originalTemplate = process.env.WHATSAPP_ORDER_TEMPLATE;
-  const originalClassTemplate = process.env.WHATSAPP_CLASS_TEMPLATE;
-  process.env.WHATSAPP_PHONE_NUMBER_ID = 'test-phone-id';
-  process.env.WHATSAPP_ACCESS_TOKEN = 'test-access-token';
-  process.env.WHATSAPP_ORDER_TEMPLATE = 'order_confirmation';
-  process.env.WHATSAPP_CLASS_TEMPLATE = 'class_confirmation';
-  const outgoingBodies = [];
-  globalThis.fetch = async (url, options) => {
-    assert.match(String(url), /\/messages$/);
-    outgoingBodies.push(JSON.parse(options.body));
-    return new Response(
-      JSON.stringify({ messages: [{ id: 'wamid.test-message' }] }),
-      { status: 200 },
-    );
-  };
-  try {
-    await sendOrderWhatsApp(order._id);
-    const sentOrder = await Order.findById(order._id);
-    assert.equal(sentOrder.whatsapp.status, 'sent');
-    assert.equal(sentOrder.whatsapp.messageId, 'wamid.test-message');
-    assert.equal(outgoingBodies[0].to, '919876543210');
-    assert.equal(outgoingBodies[0].template.name, 'order_confirmation');
-    assert.equal(outgoingBodies[0].template.components[0].parameters.length, 3);
-    const classSession = await ClassSession.create({
-      title: 'WhatsApp Class',
-      instructorName: 'Instructor',
-      startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      price: 250,
-      seats: [
-        {
-          seatNumber: 'A1',
-          status: 'booked',
-          bookedBy: customer.user.id,
-          paymentOrderId: `CLS${'a'.repeat(32)}`,
-        },
-      ],
-    });
-    await sendClassWhatsApp(classSession._id, `CLS${'a'.repeat(32)}`);
-    const notifiedClass = await ClassSession.findById(classSession._id);
-    assert.equal(notifiedClass.seats[0].whatsapp.status, 'sent');
-    assert.equal(outgoingBodies[1].template.name, 'class_confirmation');
-    assert.equal(outgoingBodies[1].template.components[0].parameters.length, 4);
-
-    await User.updateOne(
-      { _id: customer.user.id },
-      { $set: { whatsappOptIn: false } },
-    );
-    const optedOutOrder = await Order.create({
-      user: customer.user.id,
-      items: [{ product: product._id, name: product.name, price: 250, quantity: 1 }],
-      total: 250,
-      shippingAddress: order.shippingAddress,
-      paymentMethod: 'cashfree',
-      paymentStatus: 'paid',
-      status: 'paid',
-      payment: { providerOrderId: `DV${new mongoose.Types.ObjectId()}` },
-    });
-    await sendOrderWhatsApp(optedOutOrder._id);
-    assert.equal((await Order.findById(optedOutOrder._id)).whatsapp.status, 'not_requested');
-  } finally {
-    globalThis.fetch = originalFetch;
-    if (originalPhoneId === undefined) delete process.env.WHATSAPP_PHONE_NUMBER_ID;
-    else process.env.WHATSAPP_PHONE_NUMBER_ID = originalPhoneId;
-    if (originalToken === undefined) delete process.env.WHATSAPP_ACCESS_TOKEN;
-    else process.env.WHATSAPP_ACCESS_TOKEN = originalToken;
-    if (originalTemplate === undefined) delete process.env.WHATSAPP_ORDER_TEMPLATE;
-    else process.env.WHATSAPP_ORDER_TEMPLATE = originalTemplate;
-    if (originalClassTemplate === undefined) delete process.env.WHATSAPP_CLASS_TEMPLATE;
-    else process.env.WHATSAPP_CLASS_TEMPLATE = originalClassTemplate;
   }
 });
 

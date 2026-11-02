@@ -46,7 +46,6 @@ export const getProfile = asyncHandler(async (req, res) => {
       name: user.name,
       email: user.email,
       phone: user.phone,
-      whatsappOptIn: user.whatsappOptIn,
       addresses: user.addresses,
     },
   });
@@ -57,8 +56,6 @@ export const updateProfile = asyncHandler(async (req, res) => {
     allowed.name = req.body.name.trim().slice(0, 80);
   if (req.body.phone !== undefined)
     allowed.phone = String(req.body.phone).trim().slice(0, 20);
-  if (typeof req.body.whatsappOptIn === "boolean")
-    allowed.whatsappOptIn = req.body.whatsappOptIn;
   const user = await User.findByIdAndUpdate(
     req.user._id,
     { $set: allowed },
@@ -71,7 +68,6 @@ export const updateProfile = asyncHandler(async (req, res) => {
       name: user.name,
       email: user.email,
       phone: user.phone,
-      whatsappOptIn: user.whatsappOptIn,
       addresses: user.addresses,
     },
   });

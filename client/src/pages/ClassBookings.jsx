@@ -39,9 +39,6 @@ export default function ClassBookings() {
   const [contactPhone, setContactPhone] = useState(user?.phone || "");
   const [loading, setLoading] = useState(true);
   const [busySeat, setBusySeat] = useState("");
-  const [whatsappOptIn, setWhatsappOptIn] = useState(false);
-  const [savedWhatsappOptIn, setSavedWhatsappOptIn] = useState(false);
-  const [profileLoaded, setProfileLoaded] = useState(false);
   const [notice, setNotice] = useState({ type: "", message: "" });
   const [toast, setToast] = useState(null);
   const [classPaymentRetryAt, setClassPaymentRetryAt] = useState(0);
@@ -153,22 +150,18 @@ export default function ClassBookings() {
         .get("/profile")
         .then(({ data }) => {
           const profile = data.profile;
-          const optedIn = Boolean(profile.whatsappOptIn);
           const savedPhone =
             profile.addresses?.find((address) => address.isDefault)?.phone ||
             profile.addresses?.[0]?.phone;
           setContactEmail(profile.email || user.email || "");
           setContactPhone(profile.phone || savedPhone || "");
-          setWhatsappOptIn(optedIn);
-          setSavedWhatsappOptIn(optedIn);
-          setProfileLoaded(true);
         })
         .catch((error) =>
           setNotice({
             type: "error",
             message:
               error.response?.data?.message ||
-              "Could not load your WhatsApp preference. Refresh before booking.",
+              "Could not load your contact details. Refresh before booking.",
           }),
         );
     }
@@ -498,10 +491,6 @@ export default function ClassBookings() {
     setNotice({ type: "", message: "Checking seat availability…" });
     let paymentToLaunch = null;
     try {
-      if (profileLoaded && whatsappOptIn !== savedWhatsappOptIn) {
-        await api.patch("/profile", { whatsappOptIn });
-        setSavedWhatsappOptIn(whatsappOptIn);
-      }
       const { data } = await api.post(`/classes/${session._id}/seats/payment`, {
         seatNumbers,
         email,
@@ -1139,17 +1128,6 @@ export default function ClassBookings() {
                       />
                       {/* <small>Include your country code if needed.</small> */}
                     </label>
-                    {/* <label className="whatsapp-opt-in">
-                      <input
-                        type="checkbox"
-                        checked={whatsappOptIn}
-                        disabled={!profileLoaded || Boolean(busySeat)}
-                        onChange={(event) =>
-                          setWhatsappOptIn(event.target.checked)
-                        }
-                      />
-                      Send booking updates on WhatsApp (optional).
-                    </label> */}
                   </div>
                   <div className="class-contact-actions">
                     <button

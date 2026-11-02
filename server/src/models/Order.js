@@ -107,16 +107,6 @@ const schema = new mongoose.Schema(
         height: Number,
       },
     },
-    whatsapp: {
-      status: {
-        type: String,
-        enum: ["not_requested", "sending", "sent", "failed"],
-        default: "not_requested",
-      },
-      messageId: { type: String, default: "" },
-      error: { type: String, default: "" },
-      sentAt: Date,
-    },
     emailNotification: {
       status: {
         type: String,

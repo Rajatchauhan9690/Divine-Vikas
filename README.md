@@ -8,7 +8,7 @@ Divine Vikas is a fragrance storefront with customer accounts, product checkout,
 - **Server:** Node.js, Express, MongoDB, Mongoose
 - **Authentication:** short-lived access tokens, rotating refresh tokens in HttpOnly cookies, bcrypt password hashing, customer/admin roles
 - **Payments:** Cashfree Payment Gateway for products and class bookings
-- **Optional integrations:** Cloudinary image uploads, Shiprocket fulfilment, WhatsApp Business notifications
+- **Optional integrations:** Cloudinary image uploads and Shiprocket fulfilment
 
 ## Requirements
 
@@ -55,7 +55,6 @@ The server loads settings from `server/.env`. Required values are `MONGODB_URI`,
 | `CASHFREE_ENV`, `CASHFREE_CLIENT_ID`, `CASHFREE_CLIENT_SECRET` | Cashfree Payment Gateway mode and credentials. Use sandbox credentials for development; credentials must never be placed in the client environment. |
 | `CASHFREE_WEBHOOK_URL` | Optional public webhook URL configured for Cashfree. |
 | `SHIPROCKET_EMAIL`, `SHIPROCKET_PASSWORD`, `SHIPROCKET_PICKUP_LOCATION`, `SHIPROCKET_PICKUP_POSTCODE`, `SHIPROCKET_WEBHOOK_TOKEN` | Optional Shiprocket shipping, label, and tracking integration. |
-| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_ORDER_TEMPLATE`, `WHATSAPP_CLASS_TEMPLATE` | Optional WhatsApp Business message integration. Requires approved templates and customer opt-in. |
 
 Client-only settings belong in `client/.env`:
 
@@ -63,6 +62,8 @@ Client-only settings belong in `client/.env`:
 | --- | --- |
 | `VITE_API_URL` | API base URL; defaults to `http://localhost:5000/api`. |
 | `VITE_SUPPORT_WHATSAPP`, `VITE_SUPPORT_EMAIL`, `VITE_SUPPORT_PHONE` | Optional contact information shown on the support page. |
+
+The support WhatsApp contact opens a `wa.me` link from the client; WhatsApp customer support does not use a backend service.
 
 Restart the relevant development server after changing environment settings. Do not commit `.env` files or put provider secrets in client variables.
 
@@ -129,10 +130,6 @@ Set the three `CLOUDINARY_*` server variables to enable Cloudinary product image
 ### Shiprocket
 
 Set the `SHIPROCKET_*` credentials and pickup settings to use courier discovery and shipment creation from Admin Orders. Configure the provider's tracking webhook to call `/api/courier-updates` and use the same secret for `SHIPROCKET_WEBHOOK_TOKEN`. Shipment creation is restricted to paid orders.
-
-### WhatsApp Business
-
-Set the `WHATSAPP_*` server variables and configure approved utility templates before enabling notifications. The order template requires three body parameters; the class template requires four. Customers must opt in before automated messages are sent. Provider access tokens must remain server-side.
 
 ## Security
 

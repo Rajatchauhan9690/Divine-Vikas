@@ -19,16 +19,6 @@ const seatSchema = new mongoose.Schema(
     paymentOrderId: { type: String, default: "" },
     paymentSessionId: { type: String, default: "" },
     paymentId: { type: String, default: "" },
-    whatsapp: {
-      status: {
-        type: String,
-        enum: ["not_requested", "sending", "sent", "failed"],
-        default: "not_requested",
-      },
-      messageId: { type: String, default: "" },
-      error: { type: String, default: "" },
-      sentAt: Date,
-    },
     emailNotification: {
       status: {
         type: String,

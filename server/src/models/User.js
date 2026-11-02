@@ -15,7 +15,6 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, minlength: 8, select: false },
     role: { type: String, enum: ["customer", "admin"], default: "customer" },
     phone: { type: String, trim: true, maxlength: 20, default: "" },
-    whatsappOptIn: { type: Boolean, default: false },
     addresses: [
       {
         label: { type: String, trim: true, maxlength: 40, default: "Home" },

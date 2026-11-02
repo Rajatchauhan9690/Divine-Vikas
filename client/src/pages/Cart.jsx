@@ -31,8 +31,6 @@ export default function Cart() {
   const [selected, setSelected] = useState("");
   const [address, setAddress] = useState(emptyAddress);
   const [newAddress, setNewAddress] = useState(false);
-  const [whatsappOptIn, setWhatsappOptIn] = useState(false);
-  const [savedWhatsappOptIn, setSavedWhatsappOptIn] = useState(false);
   const [profileLoaded, setProfileLoaded] = useState(false);
   useEffect(() => {
     if (!showPaymentExitConfirm) return undefined;
@@ -48,11 +46,8 @@ export default function Cart() {
         .get("/profile")
         .then((r) => {
           const a = r.data.profile.addresses || [];
-          const optedIn = Boolean(r.data.profile.whatsappOptIn);
           setAddresses(a);
           setSelected(a.find((x) => x.isDefault)?._id || a[0]?._id || "");
-          setWhatsappOptIn(optedIn);
-          setSavedWhatsappOptIn(optedIn);
           setProfileLoaded(true);
           if (r.data.profile.name)
             setAddress((v) => ({
@@ -81,7 +76,7 @@ export default function Cart() {
     }
     if (!profileLoaded) {
       setMessage(
-        "Your profile preference could not be loaded. Refresh before continuing to checkout.",
+        "Your profile details could not be loaded. Refresh before continuing to checkout.",
       );
       return;
     }
@@ -103,10 +98,6 @@ export default function Cart() {
         }
       }
       if (!ship) throw new Error("Please select or enter a delivery address.");
-      if (whatsappOptIn !== savedWhatsappOptIn) {
-        await api.patch("/profile", { whatsappOptIn });
-        setSavedWhatsappOptIn(whatsappOptIn);
-      }
       const { data } = await api.post("/orders", {
         items: items.map((i) => ({ product: i._id, quantity: i.qty })),
         shippingAddress: ship,
@@ -438,18 +429,7 @@ export default function Cart() {
                 <small>UPI, cards and supported payment methods</small>
               </span>
             </div>
-            {/* <label className="whatsapp-opt-in">
-              <input
-                type="checkbox"
-                checked={whatsappOptIn}
-                disabled={!profileLoaded || busy}
-                onChange={(event) => setWhatsappOptIn(event.target.checked)}
-              />
-              I agree to receive order and class booking updates on WhatsApp.
-              This is optional. Messages are sent only when WhatsApp Business
-              messaging is configured.
-            </label>
-            {message && <p className="notice error">{message}</p>} */}
+            {message && <p className="notice error">{message}</p>}
             <button
               className="btn class-flow-button class-flow-button--gold btn-full"
               disabled={busy}

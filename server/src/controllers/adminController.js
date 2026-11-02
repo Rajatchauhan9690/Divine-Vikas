@@ -9,7 +9,6 @@ import {
   generateShiprocketLabel,
   getShiprocketCouriers,
 } from "../services/shiprocketService.js";
-// import { sendOrderWhatsApp } from "../services/whatsappService.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 export const dashboard = asyncHandler(async (req, res) => {
   const [products, orders, users, revenue] = await Promise.all([
@@ -259,22 +258,3 @@ export const createOrderShipment = asyncHandler(async (req, res) => {
   await order.save();
   res.json({ success: true, order });
 });
-
-// WhatsApp order retries are temporarily disabled.
-// export const retryOrderWhatsApp = asyncHandler(async (req, res) => {
-//   const order = await Order.findById(req.params.orderId);
-//   if (!order) throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
-//   if (order.paymentStatus !== "paid")
-//     throw new AppError(
-//       "Only paid orders can send a confirmation message",
-//       409,
-//       "ORDER_NOT_PAID",
-//     );
-//   const status = await sendOrderWhatsApp(order._id, { retry: true });
-//   const latest = await Order.findById(order._id);
-//   res.json({
-//     success: status === "sent",
-//     status: latest.whatsapp.status,
-//     order: latest,
-//   });
-// });

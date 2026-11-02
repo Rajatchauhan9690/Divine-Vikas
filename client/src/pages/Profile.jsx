@@ -66,7 +66,10 @@ export default function Profile() {
       await load();
       showToast("success", "Profile updated.");
     } catch (e) {
-      showToast("error", e.response?.data?.message || "Could not update profile");
+      showToast(
+        "error",
+        e.response?.data?.message || "Could not update profile",
+      );
     } finally {
       setBusy(false);
     }
@@ -83,24 +86,6 @@ export default function Profile() {
         "error",
         e.response?.data?.message ||
           "Could not sign out on all devices. Please try again.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function setWhatsAppUpdates(enabled) {
-    setBusy(true);
-    try {
-      await api.patch("/profile", { whatsappOptIn: enabled });
-      await load();
-      showToast(
-        "success",
-        `WhatsApp updates turned ${enabled ? "on" : "off"}.`,
-      );
-    } catch (e) {
-      showToast(
-        "error",
-        e.response?.data?.message || "Could not update WhatsApp preference",
       );
     } finally {
       setBusy(false);
@@ -132,7 +117,10 @@ export default function Profile() {
       setAddressToDelete(null);
       showToast("success", "Address deleted.");
     } catch (e) {
-      showToast("error", e.response?.data?.message || "Could not delete address");
+      showToast(
+        "error",
+        e.response?.data?.message || "Could not delete address",
+      );
     } finally {
       setBusy(false);
     }
@@ -186,23 +174,6 @@ export default function Profile() {
               onChange={(e) => setPhone(e.target.value)}
             />
           </label>
-          <div className="whatsapp-opt-in">
-            <span>
-              WhatsApp order and class updates:{" "}
-              <b>{profile?.whatsappOptIn ? "On" : "Off"}</b>. You can change
-              this preference here or during checkout.
-            </span>
-            <button
-              type="button"
-              className="text-link"
-              disabled={busy}
-              onClick={() =>
-                setWhatsAppUpdates(!profile?.whatsappOptIn)
-              }
-            >
-              Turn {profile?.whatsappOptIn ? "off" : "on"} WhatsApp updates
-            </button>
-          </div>
           <div className="profile-actions">
             <button
               className="btn class-flow-button class-flow-button--gold"
@@ -265,7 +236,9 @@ export default function Profile() {
             className="btn class-flow-button class-flow-button--gold"
             disabled={
               busy ||
-              (!addressFormOpen && !editing && (profile?.addresses?.length || 0) >= 3)
+              (!addressFormOpen &&
+                !editing &&
+                (profile?.addresses?.length || 0) >= 3)
             }
             onClick={() => {
               if (addressFormOpen) {
@@ -282,123 +255,126 @@ export default function Profile() {
             {addressFormOpen ? "Close address form" : "Add a delivery address"}
           </button>
           {(profile?.addresses?.length || 0) >= 3 && (
-            <p>You can save up to 3 delivery addresses. Delete one to add another.</p>
+            <p>
+              You can save up to 3 delivery addresses. Delete one to add
+              another.
+            </p>
           )}
         </div>
       </div>
       {addressFormOpen && (
-      <form className="account-card address-form" onSubmit={saveAddress}>
-        <h2>{editing ? "Edit address" : "Add a delivery address"}</h2>
-        <div className="account-form-grid">
-          <label>
-            Label
+        <form className="account-card address-form" onSubmit={saveAddress}>
+          <h2>{editing ? "Edit address" : "Add a delivery address"}</h2>
+          <div className="account-form-grid">
+            <label>
+              Label
+              <input
+                required
+                value={form.label}
+                onChange={(e) => change("label", e.target.value)}
+                placeholder="Home, Work"
+              />
+            </label>
+            <label>
+              Full name
+              <input
+                required
+                value={form.fullName}
+                onChange={(e) => change("fullName", e.target.value)}
+              />
+            </label>
+            <label>
+              Phone
+              <input
+                required
+                value={form.phone}
+                onChange={(e) => change("phone", e.target.value)}
+              />
+            </label>
+            <label>
+              Address line 1
+              <input
+                required
+                value={form.line1}
+                onChange={(e) => change("line1", e.target.value)}
+              />
+            </label>
+            <label>
+              Address line 2
+              <input
+                value={form.line2}
+                onChange={(e) => change("line2", e.target.value)}
+              />
+            </label>
+            <label>
+              Landmark
+              <input
+                value={form.landmark}
+                onChange={(e) => change("landmark", e.target.value)}
+              />
+            </label>
+            <label>
+              City
+              <input
+                required
+                value={form.city}
+                onChange={(e) => change("city", e.target.value)}
+              />
+            </label>
+            <label>
+              State
+              <input
+                required
+                value={form.state}
+                onChange={(e) => change("state", e.target.value)}
+              />
+            </label>
+            <label>
+              Postal code
+              <input
+                required
+                value={form.postalCode}
+                onChange={(e) => change("postalCode", e.target.value)}
+              />
+            </label>
+            <label>
+              Country
+              <input
+                required
+                value={form.country}
+                onChange={(e) => change("country", e.target.value)}
+              />
+            </label>
+          </div>
+          <label className="check-label">
             <input
-              required
-              value={form.label}
-              onChange={(e) => change("label", e.target.value)}
-              placeholder="Home, Work"
-            />
+              type="checkbox"
+              checked={Boolean(form.isDefault)}
+              onChange={(e) => change("isDefault", e.target.checked)}
+            />{" "}
+            Set as default address
           </label>
-          <label>
-            Full name
-            <input
-              required
-              value={form.fullName}
-              onChange={(e) => change("fullName", e.target.value)}
-            />
-          </label>
-          <label>
-            Phone
-            <input
-              required
-              value={form.phone}
-              onChange={(e) => change("phone", e.target.value)}
-            />
-          </label>
-          <label>
-            Address line 1
-            <input
-              required
-              value={form.line1}
-              onChange={(e) => change("line1", e.target.value)}
-            />
-          </label>
-          <label>
-            Address line 2
-            <input
-              value={form.line2}
-              onChange={(e) => change("line2", e.target.value)}
-            />
-          </label>
-          <label>
-            Landmark
-            <input
-              value={form.landmark}
-              onChange={(e) => change("landmark", e.target.value)}
-            />
-          </label>
-          <label>
-            City
-            <input
-              required
-              value={form.city}
-              onChange={(e) => change("city", e.target.value)}
-            />
-          </label>
-          <label>
-            State
-            <input
-              required
-              value={form.state}
-              onChange={(e) => change("state", e.target.value)}
-            />
-          </label>
-          <label>
-            Postal code
-            <input
-              required
-              value={form.postalCode}
-              onChange={(e) => change("postalCode", e.target.value)}
-            />
-          </label>
-          <label>
-            Country
-            <input
-              required
-              value={form.country}
-              onChange={(e) => change("country", e.target.value)}
-            />
-          </label>
-        </div>
-        <label className="check-label">
-          <input
-            type="checkbox"
-            checked={Boolean(form.isDefault)}
-            onChange={(e) => change("isDefault", e.target.checked)}
-          />{" "}
-          Set as default address
-        </label>
-        <div className="inline-actions">
-          <button
-            className="btn class-flow-button class-flow-button--gold"
-            disabled={busy}
-          >
-            {busy ? "Saving…" : editing ? "Update address" : "Save address"}
-          </button>
-          <button
-            type="button"
-            className="btn btn-outline"
-            disabled={busy}
-            onClick={() => {
-              setEditing("");
-              setForm(empty);
-              setAddressFormOpen(false);
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
+          <div className="inline-actions">
+            <button
+              className="btn class-flow-button class-flow-button--gold"
+              disabled={busy}
+            >
+              {busy ? "Saving…" : editing ? "Update address" : "Save address"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline"
+              disabled={busy}
+              onClick={() => {
+                setEditing("");
+                setForm(empty);
+                setAddressFormOpen(false);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
       )}
       {addressToDelete && (
         <div className="confirm-overlay">
