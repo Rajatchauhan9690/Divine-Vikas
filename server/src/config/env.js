@@ -28,9 +28,17 @@ export const env = {
     .map((origin) => origin.trim())
     .filter(Boolean),
   clientOrigin: process.env.CLIENT_ORIGIN || "http://localhost:5173",
+  clientOrigins: [
+    process.env.CLIENT_ORIGIN || "http://localhost:5173",
+    "https://divine-vikas-mp969ym3q-rajats-projects-149ec79a.vercel.app",
+    "https://divine-vikas.vercel.app",
+  ],
   accessSecret: process.env.ACCESS_TOKEN_SECRET,
   refreshSecret: process.env.REFRESH_TOKEN_SECRET,
   accessTtl: process.env.ACCESS_TOKEN_TTL || "10m",
   refreshDays: Number(process.env.REFRESH_TOKEN_DAYS) || 7,
-  sameSite: process.env.COOKIE_SAME_SITE || "lax",
+  sameSite:
+    process.env.NODE_ENV === "production"
+      ? "none"
+      : process.env.COOKIE_SAME_SITE || "lax",
 };
