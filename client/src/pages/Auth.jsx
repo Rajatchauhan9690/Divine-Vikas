@@ -30,8 +30,10 @@ export default function Auth({ mode = "login" }) {
       nav(
         u.role === "admin"
           ? "/admin"
-          : destination ||
-              (location.state?.from === "/cart" ? "/cart" : "/shop"),
+          : u.role === "sub_admin"
+            ? "/admin/services"
+            : destination ||
+                (location.state?.from === "/cart" ? "/cart" : "/shop"),
       );
     } catch (err) {
       setError(

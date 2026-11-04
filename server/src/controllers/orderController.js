@@ -13,6 +13,7 @@ import {
   releaseProductPaymentAttempt,
 } from "../services/productPaymentService.js";
 import { processClassPaymentWebhook } from "./classSessionController.js";
+import { processManualSubscriptionWebhook } from "../services/subAdminSubscriptionService.js";
 function validAddress(a) {
   return (
     a &&
@@ -819,6 +820,14 @@ export const cashfreeWebhook = asyncHandler(async (req, res) => {
     }
   }
   if (!order) {
+    const subscriptionHandled = await processManualSubscriptionWebhook({
+      providerOrderId: cfOrderId,
+      paymentStatus,
+      paymentId: String(paymentId || ""),
+      paymentAmount: event.data?.payment?.payment_amount,
+    });
+    if (subscriptionHandled)
+      return res.json({ success: true, ignored: false });
     const handled = await processClassPaymentWebhook({
       paymentOrderId: cfOrderId,
       paymentStatus,

@@ -2,9 +2,14 @@ import { useEffect, useState } from "react";
 import {
   Armchair,
   ArrowLeft,
+  CalendarDays,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock3,
+  IndianRupee,
   Search,
+  UserRound,
 } from "lucide-react";
 import { api } from "../services/api";
 import AdminToast from "./AdminToast";
@@ -46,7 +51,7 @@ export default function AdminBookings() {
             type: "error",
             text:
               error.response?.data?.message ||
-              "Could not load class bookings.",
+              "Could not load session bookings.",
           });
         }
       } finally {
@@ -75,7 +80,7 @@ export default function AdminBookings() {
       <div className="admin-bookings-topbar">
         <header className="admin-bookings-heading">
           <div>
-            <h2>Class bookings</h2>
+            <h2>Session bookings</h2>
           </div>
         </header>
         <div className="admin-bookings-toolbar">
@@ -128,11 +133,6 @@ export default function AdminBookings() {
               booked: booked.length,
               pending_payment: pending.length,
             };
-            const groupedSeats = {
-              available,
-              booked,
-              pending_payment: pending,
-            };
             return (
               <div className="admin-booking-detail">
                 <button
@@ -142,29 +142,33 @@ export default function AdminBookings() {
                 >
                   <ArrowLeft size={16} /> Back to bookings
                 </button>
-                <article className="admin-booking-session">
-                  <header className="admin-booking-session-header">
+                <article className="admin-booking-session admin-booking-session-detail">
+                  <header className="admin-booking-detail-hero">
                     <div>
-                      <span className="eyebrow">
+                      <span className="admin-booking-detail-kicker">
+                        <CalendarDays size={15} aria-hidden="true" />
                         {new Date(selectedSession.startsAt).toLocaleString(
                           [],
-                          { dateStyle: "medium", timeStyle: "short" },
+                          {
+                            weekday: "long",
+                            month: "long",
+                            day: "numeric",
+                            year: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          },
                         )}
                       </span>
                       <h3>{selectedSession.title}</h3>
-                      <p>
-                        {selectedSession.instructorName}
-                        {Number(selectedSession.price) > 0
-                          ? ` · ₹${Number(selectedSession.price).toFixed(2)} per seat`
-                          : ""}
-                      </p>
+                      <p>Review seat availability and attendee status for this class.</p>
                     </div>
-                    <span className="admin-booking-capacity">
-                      <Armchair size={17} aria-hidden="true" />
-                      {seats.length} seats
-                    </span>
+                    <span className="admin-booking-capacity"><Armchair size={17} aria-hidden="true" />{seats.length} seats</span>
                   </header>
                   <div className="admin-booking-counts">
+                    <div className="admin-booking-count total">
+                      <strong>{seats.length}</strong>
+                      <span>Total seats</span>
+                    </div>
                     {seatStatuses.map((status) => (
                       <div
                         className={`admin-booking-count ${status.className}`}
@@ -175,32 +179,67 @@ export default function AdminBookings() {
                       </div>
                     ))}
                   </div>
-                  <div className="admin-booking-seat-groups">
-                    {seatStatuses.map((status) => (
-                      <section
-                        className="admin-booking-seat-group"
-                        key={status.key}
-                      >
-                        <h4>
-                          {status.label} seats{" "}
-                          <span>({counts[status.key]})</span>
-                        </h4>
-                        {groupedSeats[status.key].length ? (
-                          <div className="admin-booking-seat-list">
-                            {groupedSeats[status.key].map((seat) => (
-                              <span
-                                className={`admin-booking-seat ${status.className}`}
-                                key={seat.seatNumber}
-                              >
-                                {seat.seatNumber}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="admin-booking-no-seats">None</p>
-                        )}
-                      </section>
-                    ))}
+                  <div className="admin-booking-detail-body">
+                    <section className="admin-booking-seat-map">
+                      <div className="admin-booking-seat-heading">
+                        <div>
+                          <span className="eyebrow">LIVE AVAILABILITY</span>
+                          <h4>Seat map</h4>
+                        </div>
+                        <span className="admin-booking-seat-total">
+                          <Armchair size={15} aria-hidden="true" />
+                          {seats.length} seats
+                        </span>
+                      </div>
+                      <div className="admin-booking-seat-legend" aria-label="Seat status legend">
+                        {seatStatuses.map((status) => (
+                          <span key={status.key}>
+                            <i className={`admin-booking-seat-dot ${status.className}`} />
+                            {status.label}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="admin-booking-seat-list admin-booking-seat-map-grid">
+                        {seats.map((seat) => {
+                          const status = seatStatuses.find(
+                            (item) => item.key === seat.status,
+                          );
+                          return (
+                            <span
+                              className={`admin-booking-seat ${status?.className || "available"}`}
+                              key={seat.seatNumber}
+                              title={`${seat.seatNumber} · ${status?.label || "Available"}`}
+                            >
+                              <Armchair size={15} aria-hidden="true" />
+                              {seat.seatNumber}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </section>
+                    <aside className="admin-booking-session-sidebar">
+                      <h4>Session details</h4>
+                      <div>
+                        <span><UserRound size={16} aria-hidden="true" /> Instructor</span>
+                        <strong>{selectedSession.instructorName || "Not specified"}</strong>
+                      </div>
+                      <div>
+                        <span><Clock3 size={16} aria-hidden="true" /> Duration</span>
+                        <strong>{selectedSession.durationMinutes || 60} minutes</strong>
+                      </div>
+                      <div>
+                        <span><IndianRupee size={16} aria-hidden="true" /> Price per seat</span>
+                        <strong>
+                          {Number(selectedSession.price) > 0
+                            ? `₹${Number(selectedSession.price).toFixed(2)}`
+                            : "Free"}
+                        </strong>
+                      </div>
+                      <div className="admin-booking-sidebar-note">
+                        <CheckCircle2 size={16} aria-hidden="true" />
+                        Seat statuses update as bookings are confirmed.
+                      </div>
+                    </aside>
                   </div>
                 </article>
               </div>

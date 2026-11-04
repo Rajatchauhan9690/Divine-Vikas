@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import mongoose from "mongoose";
 import ClassSession from "../models/ClassSession.js";
 import ClassPaymentHold from "../models/ClassPaymentHold.js";
+import User from "../models/User.js";
 import AppError from "../utils/AppError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import {
@@ -77,7 +78,21 @@ async function completeSeatPayment({
   await ClassSession.updateOne(
     {
       _id: classId,
-      startsAt: { $gt: now },
+      $or: [
+        {
+          bookingType: { $in: ["class", null] },
+          startsAt: { $gt: now },
+        },
+        {
+          bookingType: "time_slots",
+          seats: {
+            $elemMatch: {
+              paymentOrderId,
+              slotStartsAt: { $gt: now },
+            },
+          },
+        },
+      ],
       $expr: {
         $eq: [
           {
@@ -193,7 +208,10 @@ async function releaseClassPaymentHold(accountId, paymentOrderId) {
 
 export const listClassSessions = asyncHandler(async (_req, res) => {
   await releaseExpiredHolds();
-  const sessions = await ClassSession.find({ startsAt: { $gte: new Date() } })
+  const sessions = await ClassSession.find({
+    bookingType: { $in: ["class", null] },
+    startsAt: { $gte: new Date() },
+  })
     .select(
       "title description instructorName price startsAt durationMinutes seats",
     )
@@ -217,7 +235,7 @@ export const listAdminClassSessions = asyncHandler(async (req, res) => {
   const view = ["all", "past", "upcoming"].includes(req.query.view)
     ? req.query.view
     : "upcoming";
-  const filter = {};
+  const filter = { bookingType: { $in: ["class", null] } };
   const now = new Date();
   if (view === "past") filter.startsAt = { $lt: now };
   if (view === "upcoming") filter.startsAt = { $gte: now };
@@ -248,6 +266,7 @@ export const listAdminClassSessions = asyncHandler(async (req, res) => {
 export const myClassPaymentHolds = asyncHandler(async (req, res) => {
   await releaseExpiredHolds();
   const sessions = await ClassSession.find({
+    bookingType: { $in: ["class", null] },
     "seats.bookedBy": req.user._id,
     "seats.status": "pending_payment",
     "seats.holdExpiresAt": { $gt: new Date() },
@@ -383,19 +402,61 @@ export const updateClassSession = asyncHandler(async (req, res) => {
       "INVALID_CLASS_SESSION",
     );
   }
-  const seats = Array.from({ length: parsedSeatCount }, (_, index) => ({
-    seatNumber: `S${String(index + 1).padStart(2, "0")}`,
-    status: "available",
-  }));
+  const currentSession = await ClassSession.findOne({
+    _id: classId,
+    bookingType: { $in: ["class", null] },
+    startsAt: { $gt: new Date() },
+  }).lean();
+  if (!currentSession) {
+    const exists = await ClassSession.exists({ _id: classId });
+    if (!exists)
+      throw new AppError("Class session not found", 404, "CLASS_NOT_FOUND");
+    throw new AppError(
+      "A started session cannot be edited",
+      409,
+      "CLASS_SESSION_LOCKED",
+    );
+  }
+
+  const occupiedSeats = currentSession.seats.filter((seat) =>
+    ["pending_payment", "booked"].includes(seat.status),
+  );
+  if (occupiedSeats.length > parsedSeatCount)
+    throw new AppError(
+      "Seat count cannot be lower than the number of held or booked seats",
+      409,
+      "CLASS_SEAT_COUNT_BELOW_OCCUPIED",
+    );
+
+  const occupiedSeatNumbers = new Set(
+    occupiedSeats.map((seat) => seat.seatNumber),
+  );
+  const availableSeats = new Map(
+    currentSession.seats
+      .filter((seat) => seat.status === "available")
+      .map((seat) => [seat.seatNumber, seat]),
+  );
+  const seats = [...occupiedSeats];
+  let seatNumber = 1;
+  while (seats.length < parsedSeatCount) {
+    const number = `S${String(seatNumber).padStart(2, "0")}`;
+    seatNumber += 1;
+    if (occupiedSeatNumbers.has(number)) continue;
+    seats.push(
+      availableSeats.get(number) || { seatNumber: number, status: "available" },
+    );
+  }
+  seats.sort((left, right) =>
+    left.seatNumber.localeCompare(right.seatNumber, undefined, { numeric: true }),
+  );
+
   const session = await ClassSession.findOneAndUpdate(
     {
       _id: classId,
+      bookingType: { $in: ["class", null] },
       startsAt: { $gt: new Date() },
-      seats: {
-        $not: {
-          $elemMatch: { status: { $in: ["pending_payment", "booked"] } },
-        },
-      },
+      updatedAt: currentSession.updatedAt,
+      seats: currentSession.seats,
     },
     {
       $set: {
@@ -415,9 +476,9 @@ export const updateClassSession = asyncHandler(async (req, res) => {
   if (!exists)
     throw new AppError("Class session not found", 404, "CLASS_NOT_FOUND");
   throw new AppError(
-    "A started session or one with a held or booked seat cannot be edited",
+    "The class session changed while it was being edited. Refresh and try again.",
     409,
-    "CLASS_SESSION_LOCKED",
+    "CLASS_SESSION_CHANGED",
   );
 });
 
@@ -427,6 +488,7 @@ export const deleteClassSession = asyncHandler(async (req, res) => {
   await releaseExpiredHolds();
   const session = await ClassSession.findOneAndDelete({
     _id: classId,
+    bookingType: { $in: ["class", null] },
     startsAt: { $gt: new Date() },
     seats: {
       $not: {
@@ -459,6 +521,7 @@ export const updateClassSessionPrice = asyncHandler(async (req, res) => {
   const session = await ClassSession.findOneAndUpdate(
     {
       _id: classId,
+      bookingType: { $in: ["class", null] },
       startsAt: { $gt: new Date() },
       seats: {
         $not: {
@@ -485,9 +548,44 @@ async function createClassPayment(
   res,
   requestedSeatNumbers,
   legacySeatNumber = "",
+  bookingType = "class",
 ) {
   const { classId } = req.params;
   validClassId(classId);
+  if (bookingType === "time_slots") {
+    const appointment = await ClassSession.findOne({
+      _id: classId,
+      bookingType: "time_slots",
+    })
+      .select("owner")
+      .lean();
+    if (!appointment)
+      throw new AppError("Appointment service not found", 404, "SERVICE_NOT_FOUND");
+    if (
+      appointment.owner &&
+      String(appointment.owner) === String(req.user._id)
+    )
+      throw new AppError(
+        "You cannot book an appointment service that you manage",
+        403,
+        "CANNOT_BOOK_OWN_APPOINTMENT",
+      );
+    if (
+      appointment.owner &&
+      !(await User.exists({
+        _id: appointment.owner,
+        role: "sub_admin",
+        active: true,
+        "subscription.status": "active",
+        "subscription.currentPeriodEnd": { $gt: new Date() },
+      }))
+    )
+      throw new AppError(
+        "This appointment is no longer available because the provider's subscription has ended",
+        409,
+        "APPOINTMENT_PLAN_EXPIRED",
+      );
+  }
   if (
     !Array.isArray(requestedSeatNumbers) ||
     requestedSeatNumbers.length < 1 ||
@@ -495,11 +593,11 @@ async function createClassPayment(
     requestedSeatNumbers.some(
       (seatNumber) =>
         typeof seatNumber !== "string" ||
-        !/^S\d{2,3}$/i.test(seatNumber.trim()),
+        !/^[ST]\d{2,3}$/i.test(seatNumber.trim()),
     )
   )
     throw new AppError(
-      "Select between 1 and 2 valid seats",
+      "Select between 1 and 2 valid appointment times",
       400,
       "INVALID_SEAT_SELECTION",
     );
@@ -508,7 +606,7 @@ async function createClassPayment(
   ];
   if (seatNumbers.length !== requestedSeatNumbers.length)
     throw new AppError(
-      "A seat can only be selected once",
+      "An appointment time can only be selected once",
       400,
       "DUPLICATE_SEAT_SELECTION",
     );
@@ -557,6 +655,9 @@ async function createClassPayment(
     seats: {
       $elemMatch: {
         seatNumber,
+        ...(bookingType === "time_slots"
+          ? { slotStartsAt: { $gt: holdExpiresAt } }
+          : {}),
         $or: [
           { status: "available" },
           { status: "pending_payment", holdExpiresAt: { $lte: now } },
@@ -569,7 +670,11 @@ async function createClassPayment(
     session = await ClassSession.findOneAndUpdate(
       {
         _id: classId,
-        startsAt: { $gt: holdExpiresAt },
+        bookingType:
+          bookingType === "class" ? { $in: ["class", null] } : bookingType,
+        ...(bookingType === "class"
+          ? { startsAt: { $gt: holdExpiresAt } }
+          : {}),
         price: { $gt: 0 },
         $and: availableSeatConditions,
       },
@@ -602,12 +707,12 @@ async function createClassPayment(
     const record = await ClassSession.findById(classId).select("price");
     if (!record?.price)
       throw new AppError(
-        "This class has no payment price. Ask the administrator to set a price before booking.",
+        "This booking has no payment price. Ask the administrator to set a price before booking.",
         400,
         "CLASS_PRICE_REQUIRED",
       );
     throw new AppError(
-      "This seat is no longer available, or the class has already started",
+      "This appointment time is no longer available or has already started",
       409,
       "SEAT_UNAVAILABLE",
     );
@@ -616,7 +721,8 @@ async function createClassPayment(
   const returnQuery = legacySeatNumber
     ? `seat=${encodeURIComponent(legacySeatNumber)}`
     : `order_id=${encodeURIComponent(paymentOrderId)}`;
-  const returnUrl = `${process.env.CLIENT_ORIGIN || "http://localhost:5173"}/classes?payment=return&class_id=${classId}&${returnQuery}`;
+  const returnPath = bookingType === "time_slots" ? "services" : "classes";
+  const returnUrl = `${process.env.CLIENT_ORIGIN || "http://localhost:5173"}/${returnPath}?payment=return&class_id=${classId}&${returnQuery}`;
   try {
     const cf = await cashfreeRequest("/orders", {
       body: {
@@ -700,17 +806,30 @@ async function createClassPayment(
 
 export const reserveClassSeat = asyncHandler(async (req, res) => {
   const seatNumber = req.params.seatNumber.trim().toUpperCase();
-  await createClassPayment(req, res, [seatNumber], seatNumber);
+  await createClassPayment(req, res, [seatNumber], seatNumber, "class");
 });
 
 export const reserveClassSeats = asyncHandler(async (req, res) => {
-  await createClassPayment(req, res, req.body.seatNumbers);
+  await createClassPayment(req, res, req.body.seatNumbers, "", "class");
 });
 
-async function verifyClassPayment(req, classId, paymentOrderId, seatNumber) {
+export const reserveServiceSlot = asyncHandler(async (req, res) => {
+  req.params.classId = req.params.serviceId;
+  const slotId = req.params.slotId.trim().toUpperCase();
+  await createClassPayment(req, res, [slotId], "", "time_slots");
+});
+
+async function verifyClassPayment(
+  req,
+  classId,
+  paymentOrderId,
+  seatNumber,
+  bookingType = "class",
+) {
   validClassId(classId);
   const session = await ClassSession.findOne({
     _id: classId,
+    bookingType: bookingType === "class" ? { $in: ["class", null] } : bookingType,
     "seats.paymentOrderId": paymentOrderId,
   }).select("title price startsAt seats");
   if (!session)
@@ -845,6 +964,7 @@ export const verifyClassSeatPayment = asyncHandler(async (req, res) => {
       req.params.classId,
       seat.paymentOrderId,
       seatNumber,
+      "class",
     ),
   );
 });
@@ -854,18 +974,37 @@ export const verifyClassOrderPayment = asyncHandler(async (req, res) => {
   if (!/^CLS[a-f0-9]{32}$/i.test(paymentOrderId))
     throw new AppError("Invalid class payment ID", 400, "INVALID_PAYMENT_ID");
   res.json(
-    await verifyClassPayment(req, req.params.classId, paymentOrderId, ""),
+    await verifyClassPayment(req, req.params.classId, paymentOrderId, "", "class"),
+  );
+});
+
+export const verifyServiceOrderPayment = asyncHandler(async (req, res) => {
+  const { paymentOrderId } = req.params;
+  if (!/^CLS[a-f0-9]{32}$/i.test(paymentOrderId))
+    throw new AppError("Invalid service payment ID", 400, "INVALID_PAYMENT_ID");
+  res.json(
+    await verifyClassPayment(
+      req,
+      req.params.serviceId,
+      paymentOrderId,
+      "",
+      "time_slots",
+    ),
   );
 });
 
 export const cancelClassOrderPayment = asyncHandler(async (req, res) => {
-  const { classId, paymentOrderId } = req.params;
+  const { paymentOrderId } = req.params;
+  const classId = req.params.serviceId || req.params.classId;
+  const bookingType = req.params.serviceId ? "time_slots" : "class";
   validClassId(classId);
   if (!/^CLS[a-f0-9]{32}$/i.test(paymentOrderId))
     throw new AppError("Invalid class payment ID", 400, "INVALID_PAYMENT_ID");
 
   const session = await ClassSession.findOne({
     _id: classId,
+    bookingType:
+      bookingType === "class" ? { $in: ["class", null] } : bookingType,
     "seats.paymentOrderId": paymentOrderId,
   }).select("title price startsAt seats");
   if (!session)
@@ -905,7 +1044,7 @@ export const cancelClassOrderPayment = asyncHandler(async (req, res) => {
     : paymentsResponse.data || [];
   if (payments.some((payment) => payment.payment_status === "SUCCESS"))
     return res.json(
-      await verifyClassPayment(req, classId, paymentOrderId, ""),
+      await verifyClassPayment(req, classId, paymentOrderId, "", bookingType),
     );
 
   if (
@@ -914,7 +1053,7 @@ export const cancelClassOrderPayment = asyncHandler(async (req, res) => {
     )
   )
     throw new AppError(
-      "Cashfree is still processing this payment. The seats remain held until the cancellation is confirmed.",
+      "Cashfree is still processing this payment. The selected booking remains held until cancellation is confirmed.",
       409,
       "PAYMENT_CANCELLATION_PENDING",
     );
@@ -1055,6 +1194,7 @@ export const processClassPaymentWebhook = async ({
 
 export const myClassBookings = asyncHandler(async (req, res) => {
   const sessions = await ClassSession.find({
+    bookingType: { $in: ["class", null] },
     "seats.bookedBy": req.user._id,
     "seats.status": "booked",
   })

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { api } from "../services/api";
 import { useCart } from "../features/cart/CartContext";
+import { useAuth } from "../features/auth/AuthContext";
 export default function Product() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -17,6 +18,9 @@ export default function Product() {
     [error, setError] = useState(""),
     [added, setAdded] = useState(false);
   const { add } = useCart();
+  const { user, ready } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const canPurchase = ready && !isAdmin;
   function addToCart() {
     add(p);
     setAdded(true);
@@ -80,20 +84,20 @@ export default function Product() {
             ? `In stock · ${p.stock} available`
             : "Currently out of stock"}
         </p>
-        <div className="product-purchase-actions">
+        {canPurchase && <div className="product-purchase-actions">
           <PurchaseButtons
             stock={p.stock}
             addToCart={addToCart}
             buyNow={buyNow}
           />
-        </div>
-        {added && (
+        </div>}
+        {canPurchase && added && (
           <p className="cart-confirmation" role="status">
             Added to your bag. <Link to="/cart">View bag</Link>
           </p>
         )}
       </div>
-      {createPortal(
+      {canPurchase && createPortal(
         <div className="product-purchase-actions product-purchase-actions-mobile">
           <PurchaseButtons
             stock={p.stock}

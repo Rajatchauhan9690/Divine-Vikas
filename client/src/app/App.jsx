@@ -9,6 +9,8 @@ const Auth = lazy(() => import("../pages/Auth"));
 const Cart = lazy(() => import("../pages/Cart"));
 const Admin = lazy(() => import("../pages/Admin"));
 const ClassBookings = lazy(() => import("../pages/ClassBookings"));
+const ServiceBookings = lazy(() => import("../pages/ServiceBookings"));
+const SubAdminInvitation = lazy(() => import("../pages/SubAdminInvitation"));
 const Profile = lazy(() => import("../pages/Profile"));
 const Orders = lazy(() => import("../pages/Orders"));
 const Support = lazy(() => import("../pages/Support"));
@@ -24,6 +26,7 @@ export default function App() {
           <Route index element={<Home />} />
           <Route path="shop" element={<Shop />} />
           <Route path="classes" element={<ClassBookings />} />
+          <Route path="services" element={<ServiceBookings />} />
           <Route path="products/:id" element={<Product />} />
           <Route path="cart" element={<Cart />} />
           <Route path="profile" element={<Profile />} />
@@ -40,6 +43,11 @@ export default function App() {
           <Route path="admin/classes" element={<Admin />} />
           <Route path="admin/bookings" element={<Admin />} />
           <Route path="admin/orders" element={<Admin />} />
+          <Route path="admin/services" element={<Admin />} />
+          <Route path="admin/service-bookings" element={<Admin />} />
+          <Route path="admin/subscription" element={<Admin />} />
+          <Route path="admin/sub-admins" element={<Admin />} />
+          <Route path="sub-admin-invitation" element={<SubAdminInvitation />} />
           <Route
             path="*"
             element={

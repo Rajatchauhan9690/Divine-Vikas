@@ -15,6 +15,7 @@ import {
 import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
 import { useCart } from "../features/cart/CartContext";
+import PaymentSuccess from "../components/PaymentSuccess";
 const stages = ["pending", "paid", "processing", "shipped", "delivered"];
 const cancellationWindowMs = 6 * 60 * 60 * 1000;
 const ORDERS_PER_PAGE = 6;
@@ -41,6 +42,8 @@ export default function Orders() {
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(""),
     [ordersLoaded, setOrdersLoaded] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [paymentSuccessDetails, setPaymentSuccessDetails] = useState([]);
   const [ordersPage, setOrdersPage] = useState(1);
   const [now, setNow] = useState(Date.now());
   const [params] = useSearchParams();
@@ -59,7 +62,7 @@ export default function Orders() {
     setOrdersLoaded(true);
   }
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.role === "admin") return;
     load()
       .catch((e) =>
         setError(e.response?.data?.message || "Could not load orders"),
@@ -82,6 +85,7 @@ export default function Orders() {
     const verificationKey = `${user?.id || ""}:${attemptId || ""}`;
     if (
       user &&
+      user.role !== "admin" &&
       params.get("payment") === "return" &&
       attemptId &&
       verifiedPaymentReturn.current !== verificationKey
@@ -91,7 +95,27 @@ export default function Orders() {
         .post(`/orders/${attemptId}/verify-payment`)
         .then(async ({ data }) => {
           if (data.paymentStatus === "paid" && data.order) {
-            setNotice("Payment successful. Your order has been placed.");
+            setNotice("");
+            setPaymentSuccess(true);
+            setPaymentSuccessDetails([
+              {
+                label: "Order",
+                value: `#${String(data.order._id).slice(-8).toUpperCase()}`,
+              },
+              {
+                label: "Items",
+                value: data.order.items
+                  .map((item) => `${item.name} × ${item.quantity}`)
+                  .join(", "),
+              },
+              {
+                label: "Total",
+                value: Number(data.order.total).toLocaleString("en-IN", {
+                  style: "currency",
+                  currency: "INR",
+                }),
+              },
+            ]);
             for (const item of data.order.items || [])
               if (cartItems.some((cartItem) => cartItem._id === item.product))
                 remove(String(item.product));
@@ -123,6 +147,7 @@ export default function Orders() {
     }
   }, [cartItems, load, params, remove, user]);
   if (!ready) return <div className="loading-state">Loading…</div>;
+  if (user?.role === "admin") return <Navigate to="/admin/orders" replace />;
   if (!user) return <Navigate to="/login" replace />;
   async function cancelOrder(order) {
     const paidOnline =
@@ -175,6 +200,15 @@ export default function Orders() {
   }
   return (
     <section className="section orders-page">
+      {paymentSuccess && (
+        <PaymentSuccess
+          title="Your order is confirmed"
+          message="Your payment was received and your order has been placed."
+          details={paymentSuccessDetails}
+          returnTo="your orders"
+          onClose={() => setPaymentSuccess(false)}
+        />
+      )}
       <span className="eyebrow">YOUR PURCHASES</span>
       <h1 className="account-title">
         {orderId ? (

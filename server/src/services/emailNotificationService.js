@@ -59,9 +59,12 @@ export async function notifyOrderConfirmation(orderId) {
   }
 }
 
-export async function notifyClassBookingConfirmation(sessionId, paymentOrderId) {
+export async function notifyClassBookingConfirmation(
+  sessionId,
+  paymentOrderId,
+) {
   const session = await ClassSession.findById(sessionId).select(
-    "title startsAt price seats",
+    "title startsAt price bookingType seats",
   );
   const seats =
     session?.seats.filter(
@@ -106,7 +109,10 @@ export async function notifyClassBookingConfirmation(sessionId, paymentOrderId) 
       email: user.email,
       classTitle: session.title,
       seatNumbers: seats.map((seat) => seat.seatNumber),
-      startsAt: session.startsAt,
+      startsAt: session.bookingType === "time_slots"
+        ? seats[0].slotStartsAt
+        : session.startsAt,
+      appointment: session.bookingType === "time_slots",
       total: session.price * seats.length,
     });
     await ClassSession.updateOne(

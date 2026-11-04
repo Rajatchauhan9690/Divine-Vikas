@@ -55,6 +55,7 @@ The server loads settings from `server/.env`. Required values are `MONGODB_URI`,
 | `IMAGE_ORIGINS` | Optional comma-separated image origins allowed by the server's content security policy. |
 | `CASHFREE_ENV`, `CASHFREE_CLIENT_ID`, `CASHFREE_CLIENT_SECRET` | Cashfree Payment Gateway mode and credentials. Use sandbox credentials for development; credentials must never be placed in the client environment. |
 | `CASHFREE_WEBHOOK_URL` | Optional public webhook URL configured for Cashfree. |
+| `CASHFREE_SUBSCRIPTION_WEBHOOK_URL` | Optional Cashfree subscription webhook URL; configure it to `/api/sub-admin-subscriptions/cashfree/webhook`. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE` | SMTP delivery for account emails and sub-admin invitations. Configure a working SMTP sender to invite sub-admins. |
 | `SHIPROCKET_EMAIL`, `SHIPROCKET_PASSWORD`, `SHIPROCKET_PICKUP_LOCATION`, `SHIPROCKET_PICKUP_POSTCODE`, `SHIPROCKET_WEBHOOK_TOKEN` | Optional Shiprocket shipping, label, and tracking integration. |
 
@@ -107,7 +108,9 @@ Restart the relevant development server after changing environment settings. Do 
 - Dashboard metrics and separate product, class, and order management views.
 - Product creation and editing, including image upload and return-policy settings.
 - Order fulfilment, cancellations, returns, refunds, and shipping operations.
-- Admins can invite sub-admins by email. The one-time invitation link expires after 48 hours and lets the invitee create their account and password.
+- Admins can invite sub-admins by email. The one-time invitation link expires after 24 hours and starts a three-step account, plan, and payment signup.
+- Admins configure one Monthly, Quarterly, and Yearly plan in Admin → Sub-admins, including its price, maximum appointment services, and maximum future bookable time slots. New signups use the current plan settings; existing subscriptions retain the limits and period selected when purchased.
+- A sub-admin account activates only after the chosen Cashfree payment or recurring mandate is verified. Manual renewals are initiated from the Subscription page; automatic UPI mandates renew at the selected billing period. Expired or failed subscriptions lose service-management access after a three-day renewal grace period.
 - Sub-admin accounts are restricted to their own appointment services and bookings; they cannot access product, class, order, or invitation management.
 - Cashfree orders cannot be marked paid manually; payment status is verified with Cashfree.
 
@@ -120,7 +123,10 @@ Restart the relevant development server after changing environment settings. Do 
 - `/api/classes` — class sessions, seat payments, payment holds, and bookings
 - `/api/services` — public appointment services and appointment payments
 - `/api/admin` — admin dashboard, product/class/order management, appointment services, bookings, and invitations
+- `/api/admin/sub-admin-subscription-plans` — administrator plan pricing and service/session limits
+- `/api/sub-admin-subscriptions` — sub-admin subscription status and manual renewal
 - `/api/orders/cashfree/webhook` — Cashfree payment/refund webhook
+- `/api/sub-admin-subscriptions/cashfree/webhook` — Cashfree recurring subscription events
 - `/api/courier-updates` — Shiprocket tracking webhook
 
 Admin-only API routes require an authenticated admin account. Appointment-service management is available to admins and is scoped to the signed-in sub-admin's own services. Customer order and profile endpoints are authenticated and scoped to the signed-in customer.
@@ -129,9 +135,11 @@ Admin-only API routes require an authenticated admin account. Appointment-servic
 
 ### Cashfree
 
-Set `CASHFREE_ENV=sandbox`, `CASHFREE_CLIENT_ID`, and `CASHFREE_CLIENT_SECRET` in `server/.env` to enable sandbox payments. The same Cashfree integration handles product checkout and class-seat booking. The server creates the payment order and verifies payment status with Cashfree; a browser redirect alone does not confirm payment.
+Set `CASHFREE_ENV=sandbox`, `CASHFREE_CLIENT_ID`, and `CASHFREE_CLIENT_SECRET` in `server/.env` to enable sandbox payments. The server creates payment orders and verifies payment status with Cashfree; a browser redirect alone does not confirm a manual payment. Subscription API requests use Cashfree API version `2025-01-01`.
 
-For webhooks, configure the Cashfree dashboard to send events to the public HTTPS address ending in `/api/orders/cashfree/webhook`, then set that address in `CASHFREE_WEBHOOK_URL`. Local webhook testing requires an HTTPS tunnel or deployed server. Use production credentials and a production webhook URL only after merchant setup and verification.
+For orders and manual subscription payments, configure the Cashfree dashboard to send events to the public HTTPS address ending in `/api/orders/cashfree/webhook`, then set that address in `CASHFREE_WEBHOOK_URL`. For automatic renewals, configure subscription events to `/api/sub-admin-subscriptions/cashfree/webhook`; optionally set `CASHFREE_SUBSCRIPTION_WEBHOOK_URL` to that public address so manual subscription orders use the same event endpoint. Both endpoints verify Cashfree webhook signatures. Local webhook testing requires an HTTPS tunnel or deployed server. Use production credentials and production webhook URLs only after merchant setup and verification.
+
+Automatic renewal requires Cashfree Subscriptions to be enabled for the merchant account and UPI mandate authorization. Cashfree may apply additional merchant, payment-method, or API eligibility requirements. The mandate setup uses a refundable ₹1 authorization, with the first monthly charge scheduled after authorization.
 
 Product payment attempts reserve inventory temporarily and are cleaned up by a server-side periodic task. Class seat holds are released when class availability is requested after their hold expires. Refunds for eligible paid-order cancellations and accepted returns are initiated through Cashfree; provider refund processing can remain pending and should be monitored.
 

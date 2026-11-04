@@ -1,6 +1,8 @@
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import User from "../models/User.js";
+import ClassSession from "../models/ClassSession.js";
+import SubAdminInvitation from "../models/SubAdminInvitation.js";
 import AppError from "../utils/AppError.js";
 import mongoose from "mongoose";
 import {
@@ -11,20 +13,160 @@ import {
 } from "../services/shiprocketService.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 export const dashboard = asyncHandler(async (req, res) => {
-  const [products, orders, users, revenue] = await Promise.all([
-    Product.countDocuments({ active: true }),
-    Order.countDocuments(),
-    User.countDocuments({ role: "customer" }),
+  const { from, to } = req.query;
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  function parseDate(value, label) {
+    if (!value) return null;
+    if (typeof value !== "string" || !datePattern.test(value))
+      throw new AppError(`Invalid ${label} date.`, 400, "INVALID_DATE_RANGE");
+    const date = new Date(`${value}T00:00:00.000Z`);
+    if (
+      Number.isNaN(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== value
+    )
+      throw new AppError(`Invalid ${label} date.`, 400, "INVALID_DATE_RANGE");
+    return date;
+  }
+  const rangeStart = parseDate(from, "start");
+  const rangeEndDate = parseDate(to, "end");
+  if (rangeStart && rangeEndDate && rangeStart > rangeEndDate)
+    throw new AppError(
+      "The start date must be on or before the end date.",
+      400,
+      "INVALID_DATE_RANGE",
+    );
+  const rangeEnd = rangeEndDate
+    ? new Date(rangeEndDate.getTime() + 24 * 60 * 60 * 1000)
+    : null;
+  const rangeMatch = (field) => {
+    if (!rangeStart && !rangeEnd) return {};
+    return {
+      [field]: {
+        ...(rangeStart ? { $gte: rangeStart } : {}),
+        ...(rangeEnd ? { $lt: rangeEnd } : {}),
+      },
+    };
+  };
+  const now = new Date();
+  const [
+    products,
+    orders,
+    users,
+    revenue,
+    classSessions,
+    classBookings,
+    serviceBookings,
+    activeSubAdmins,
+    pendingInvitations,
+  ] = await Promise.all([
+    Product.countDocuments({ active: true, ...rangeMatch("createdAt") }),
+    Order.countDocuments(rangeMatch("createdAt")),
+    User.countDocuments({ role: "customer", ...rangeMatch("createdAt") }),
     Order.aggregate([
-      { $match: { status: { $ne: "cancelled" } } },
+      {
+        $match: {
+          status: { $ne: "cancelled" },
+          ...rangeMatch("createdAt"),
+        },
+      },
       { $group: { _id: null, total: { $sum: "$total" } } },
     ]),
+    ClassSession.countDocuments({
+      bookingType: { $in: ["class", null] },
+      ...rangeMatch("startsAt"),
+    }),
+    ClassSession.aggregate([
+      {
+        $match: {
+          bookingType: { $in: ["class", null] },
+          ...rangeMatch("startsAt"),
+        },
+      },
+      {
+        $project: {
+          seats: {
+            $filter: {
+              input: { $ifNull: ["$seats", []] },
+              as: "seat",
+              cond: {
+                $or: [
+                  { $eq: ["$$seat.status", "booked"] },
+                  {
+                    $and: [
+                      { $eq: ["$$seat.status", "pending_payment"] },
+                      { $gt: ["$$seat.holdExpiresAt", now] },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+      { $unwind: "$seats" },
+      { $count: "total" },
+    ]),
+    ClassSession.aggregate([
+      { $match: { bookingType: "time_slots" } },
+      {
+        $project: {
+          seats: {
+            $filter: {
+              input: { $ifNull: ["$seats", []] },
+              as: "seat",
+              cond: {
+                $and: [
+                  {
+                    $or: [
+                      { $eq: ["$$seat.status", "booked"] },
+                      {
+                        $and: [
+                          { $eq: ["$$seat.status", "pending_payment"] },
+                          { $gt: ["$$seat.holdExpiresAt", now] },
+                        ],
+                      },
+                    ],
+                  },
+                  ...(rangeStart
+                    ? [{ $gte: ["$$seat.slotStartsAt", rangeStart] }]
+                    : []),
+                  ...(rangeEnd
+                    ? [{ $lt: ["$$seat.slotStartsAt", rangeEnd] }]
+                    : []),
+                ],
+              },
+            },
+          },
+        },
+      },
+      { $unwind: "$seats" },
+      { $count: "total" },
+    ]),
+    User.countDocuments({
+      role: "sub_admin",
+      active: true,
+      ...rangeMatch("createdAt"),
+    }),
+    SubAdminInvitation.countDocuments({
+      consumedAt: null,
+      expiresAt: { $gt: now },
+      ...rangeMatch("createdAt"),
+    }),
   ]);
   res.json({
     success: true,
     users,
     revenue: revenue[0]?.total || 0,
-    metrics: { products, orders, users },
+    metrics: {
+      products,
+      orders,
+      users,
+      classSessions,
+      classBookings: classBookings[0]?.total || 0,
+      serviceBookings: serviceBookings[0]?.total || 0,
+      activeSubAdmins,
+      pendingInvitations,
+    },
   });
 });
 

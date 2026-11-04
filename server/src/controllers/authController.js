@@ -121,29 +121,54 @@ export const login = asyncHandler(async (req, res) => {
       "ACCOUNT_LOCKED",
     );
   }
-  if (user.lockUntil && user.lockUntil <= new Date()) {
-    user.failedLoginAttempts = 0;
-    user.lockUntil = null;
-  }
   const passwordMatches = await user.comparePassword(password);
   if (!passwordMatches || !user.active) {
-    user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
-    if (user.failedLoginAttempts >= MAX_LOGIN_ATTEMPTS)
-      user.lockUntil = new Date(Date.now() + LOCKOUT_MS);
-    await user.save();
-    if (user.lockUntil)
+    const now = new Date();
+    const failedAttempts = {
+      $cond: [
+        {
+          $and: [
+            { $ne: [{ $ifNull: ["$lockUntil", null] }, null] },
+            { $lte: ["$lockUntil", now] },
+          ],
+        },
+        1,
+        { $add: [{ $ifNull: ["$failedLoginAttempts", 0] }, 1] },
+      ],
+    };
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: user._id },
+      [
+        {
+          $set: {
+            failedLoginAttempts: failedAttempts,
+            lockUntil: {
+              $cond: [
+                { $gte: [failedAttempts, MAX_LOGIN_ATTEMPTS] },
+                new Date(now.getTime() + LOCKOUT_MS),
+                null,
+              ],
+            },
+          },
+        },
+      ],
+      { new: true, projection: { lockUntil: 1 } },
+    ).lean();
+    const lockUntil = updatedUser?.lockUntil;
+    if (lockUntil)
       res.setHeader("Retry-After", String(Math.ceil(LOCKOUT_MS / 1000)));
     throw new AppError(
-      user.lockUntil
+      lockUntil
         ? "Account temporarily locked due to repeated failed login attempts"
         : "Invalid email or password",
-      user.lockUntil ? 423 : 401,
-      user.lockUntil ? "ACCOUNT_LOCKED" : "INVALID_CREDENTIALS",
+      lockUntil ? 423 : 401,
+      lockUntil ? "ACCOUNT_LOCKED" : "INVALID_CREDENTIALS",
     );
   }
-  user.failedLoginAttempts = 0;
-  user.lockUntil = null;
-  await user.save();
+  await User.updateOne(
+    { _id: user._id },
+    { $set: { failedLoginAttempts: 0, lockUntil: null } },
+  );
   res.json({ success: true, ...(await issueSession(user, req, res)) });
 });
 

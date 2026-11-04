@@ -1,7 +1,12 @@
 import AdminOrders from "../components/AdminOrders";
 import AdminBookings from "../components/AdminBookings";
 import AdminClassSessionForm from "../components/AdminClassSessionForm";
+import AdminServices from "../components/AdminServices";
+import AdminServiceBookings from "../components/AdminServiceBookings";
+import AdminSubAdmins from "../components/AdminSubAdmins";
+import SubAdminSubscription from "../components/SubAdminSubscription";
 import AdminToast from "../components/AdminToast";
+import AdminConfirmDialog from "../components/AdminConfirmDialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, NavLink, Navigate, useLocation } from "react-router-dom";
 import {
@@ -15,9 +20,13 @@ import {
   Trash2,
   X,
   CalendarDays,
+  CalendarCheck,
+  ClipboardList,
   ChevronLeft,
   ChevronRight,
   Pencil,
+  UserCheck,
+  Mail,
 } from "lucide-react";
 import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
@@ -99,21 +108,28 @@ export default function Admin() {
   const section = location.pathname.replace("/admin", "") || "/";
   const sectionTitle = {
     "/products": "Products",
-    "/classes": "Class sessions",
-    "/bookings": "Bookings",
+    "/classes": "Sessions",
+    "/bookings": "Session bookings",
     "/orders": "Orders",
+    "/services": "Appointments",
+    "/service-bookings": "Appointment bookings",
+    "/sub-admins": "Sub-admins",
+    "/subscription": "Subscription",
   }[section];
   const [data, setData] = useState({ products: [], orders: [], users: [] }),
+    [dateRange, setDateRange] = useState({ from: "", to: "" }),
+    [appliedDateRange, setAppliedDateRange] = useState({ from: "", to: "" }),
     [form, setForm] = useState(blank),
     [show, setShow] = useState(false),
-  [editingProductId, setEditingProductId] = useState(""),
-  [toast, setToast] = useState(null),
+    [editingProductId, setEditingProductId] = useState(""),
+    [toast, setToast] = useState(null),
     [busy, setBusy] = useState(false);
   const [imagePreview, setImagePreview] = useState("");
   const [productErrors, setProductErrors] = useState({});
   const [productValidationAttempted, setProductValidationAttempted] =
     useState(false);
   const [deletingProduct, setDeletingProduct] = useState("");
+  const [productToDelete, setProductToDelete] = useState(null);
   const [productPage, setProductPage] = useState(1);
   const [productSearch, setProductSearch] = useState("");
   const [productPagination, setProductPagination] = useState({
@@ -142,9 +158,14 @@ export default function Admin() {
     setImagePreview(previewUrl);
     return () => URL.revokeObjectURL(previewUrl);
   }, [form.image]);
-  async function load() {
+  async function load(range = appliedDateRange) {
     try {
-      const r = await api.get("/admin/dashboard");
+      const r = await api.get("/admin/dashboard", {
+        params: {
+          ...(range.from ? { from: range.from } : {}),
+          ...(range.to ? { to: range.to } : {}),
+        },
+      });
       setData(r.data);
       return true;
     } catch (e) {
@@ -154,6 +175,25 @@ export default function Admin() {
       });
       return false;
     }
+  }
+  async function applyDashboardDateRange(event) {
+    event.preventDefault();
+    if (dateRange.from && dateRange.to && dateRange.from > dateRange.to) {
+      setToast({
+        type: "error",
+        text: "The start date must be on or before the end date.",
+      });
+      return;
+    }
+    const range = { ...dateRange };
+    setAppliedDateRange(range);
+    await load(range);
+  }
+  async function resetDashboardDateRange() {
+    const range = { from: "", to: "" };
+    setDateRange(range);
+    setAppliedDateRange(range);
+    await load(range);
   }
   async function loadProducts(
     page = productPageRef.current,
@@ -181,7 +221,8 @@ export default function Admin() {
       });
       return false;
     } finally {
-      if (productsRequest.current === controller) productsRequest.current = null;
+      if (productsRequest.current === controller)
+        productsRequest.current = null;
     }
   }
   useEffect(() => {
@@ -199,7 +240,13 @@ export default function Admin() {
     };
   }, [user, section, productSearch]);
   if (!ready) return <div className="loading-state">Loading…</div>;
-  if (!user || user.role !== "admin") return <Navigate to="/login" replace />;
+  if (!user || !["admin", "sub_admin"].includes(user.role))
+    return <Navigate to="/login" replace />;
+  if (
+    user.role === "sub_admin" &&
+    !["/services", "/service-bookings", "/subscription"].includes(section)
+  )
+    return <Navigate to="/admin/services" replace />;
   async function create(e) {
     e.preventDefault();
     const errors = validateProductForm(form, !editingProductId);
@@ -278,7 +325,7 @@ export default function Admin() {
     setShow(true);
   }
   async function remove(id) {
-    if (!confirm("Delete this product?")) return;
+    setProductToDelete(null);
     setDeletingProduct(id);
     try {
       await api.delete(`/admin/products/${id}`);
@@ -299,38 +346,115 @@ export default function Admin() {
     }
   }
   return (
-    <section className="section admin-page">
+    <section
+      className={`section admin-page${user.role === "sub_admin" ? " admin-page-sub-admin" : ""}`}
+    >
       <div className="admin-heading">
         <div>
           <span className="eyebrow">STORE MANAGEMENT</span>
           <h1>
-            Admin <em>{sectionTitle || "dashboard"}.</em>
+            {user.role === "admin" ? "Admin" : "Service workspace"}{" "}
+            <em>{sectionTitle || "dashboard"}.</em>
           </h1>
           <p>
             Welcome back, {user.name}.
-            {sectionTitle ? ` Manage ${sectionTitle.toLowerCase()} here.` : " Here is your store at a glance."}
+            {sectionTitle
+              ? ` Manage ${sectionTitle.toLowerCase()} here.`
+              : " Here is your store at a glance."}
           </p>
         </div>
         {section === "/" && (
           <button
             className="btn btn-outline"
-            onClick={load}
+            onClick={() => load(appliedDateRange)}
           >
             <RefreshCw size={16} /> Refresh
           </button>
         )}
       </div>
       <AdminToast toast={toast} onDismiss={dismissToast} />
+      {productToDelete && (
+        <AdminConfirmDialog
+          title={`Delete "${productToDelete.name}"?`}
+          description="This product will be permanently deleted. This action cannot be undone."
+          busy={deletingProduct === productToDelete._id}
+          onCancel={() => setProductToDelete(null)}
+          onConfirm={() => remove(productToDelete._id)}
+        />
+      )}
       <nav className="admin-section-nav" aria-label="Admin sections">
-        <NavLink to="/admin" end>
-          Overview
-        </NavLink>
-        <NavLink to="/admin/products">Products</NavLink>
-        <NavLink to="/admin/classes">Classes</NavLink>
-        <NavLink to="/admin/bookings">Bookings</NavLink>
-        <NavLink to="/admin/orders">Orders</NavLink>
+        {user.role === "admin" ? (
+          <>
+            <NavLink to="/admin" end>
+              Overview
+            </NavLink>
+            <NavLink to="/admin/products">Products</NavLink>
+            <NavLink to="/admin/classes">Sessions</NavLink>
+            <NavLink to="/admin/services">Appointments</NavLink>
+            <NavLink to="/admin/bookings">Session Bookings</NavLink>
+            <NavLink to="/admin/service-bookings">Appointment Bookings</NavLink>
+            <NavLink to="/admin/orders">Orders</NavLink>
+            <NavLink to="/admin/sub-admins">Sub-Admins</NavLink>
+          </>
+        ) : (
+          <>
+            <NavLink to="/admin/services">Appointments</NavLink>
+            <NavLink to="/admin/service-bookings">Appointment bookings</NavLink>
+            <NavLink to="/admin/subscription">Subscription</NavLink>
+          </>
+        )}
       </nav>
-      {section === "/" && (
+      {section === "/" && user.role === "admin" && (
+        <form
+          className="admin-dashboard-date-filter"
+          onSubmit={applyDashboardDateRange}
+        >
+          <div className="admin-dashboard-date-copy">
+            <h2>Overview</h2>
+            <p>Filter dashboard activity by date range.</p>
+          </div>
+          <label>
+            From
+            <input
+              type="date"
+              value={dateRange.from}
+              max={dateRange.to || undefined}
+              onChange={(event) =>
+                setDateRange((current) => ({
+                  ...current,
+                  from: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            To
+            <input
+              type="date"
+              value={dateRange.to}
+              min={dateRange.from || undefined}
+              onChange={(event) =>
+                setDateRange((current) => ({
+                  ...current,
+                  to: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <button type="submit" className="btn btn-dark">
+            Apply
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={resetDashboardDateRange}
+            disabled={!appliedDateRange.from && !appliedDateRange.to}
+          >
+            Reset
+          </button>
+        </form>
+      )}
+      {section === "/" && user.role === "admin" && (
         <div className="metrics-grid">
           <Metric
             icon={<Package />}
@@ -352,378 +476,428 @@ export default function Admin() {
             label="Revenue"
             value={`₹${data.revenue || 0}`}
           />
-        </div>
-      )}
-      {section === "/" && (
-        <div className="admin-management-menu">
-          <div className="admin-management-heading">
-            <h2>Manage your store</h2>
-            <p>Open a section to manage records and view full lists.</p>
-          </div>
-          <div className="admin-management-links">
-            <Link to="/admin/products">
-              <Package size={20} />
-              <span><b>Products</b><small>Manage catalogue and view all products</small></span>
-              <ChevronRight size={18} />
-            </Link>
-            <Link to="/admin/classes">
-              <CalendarDays size={20} />
-              <span><b>Class sessions</b><small>Create, price, or remove sessions</small></span>
-              <ChevronRight size={18} />
-            </Link>
-            <Link to="/admin/orders">
-              <ShoppingCart size={20} />
-              <span><b>Orders</b><small>Review orders and update fulfillment</small></span>
-              <ChevronRight size={18} />
-            </Link>
-            <Link to="/admin/bookings">
-              <CalendarDays size={20} />
-              <span><b>Bookings</b><small>Check available, booked, and held seats by session</small></span>
-              <ChevronRight size={18} />
-            </Link>
-          </div>
+          <Metric
+            icon={<CalendarCheck />}
+            label="Sessions"
+            value={data.metrics?.classSessions || 0}
+          />
+          <Metric
+            icon={<CalendarDays />}
+            label="Session bookings"
+            value={data.metrics?.classBookings || 0}
+          />
+          <Metric
+            icon={<ClipboardList />}
+            label="Appointment bookings"
+            value={data.metrics?.serviceBookings || 0}
+          />
+          <Metric
+            icon={<UserCheck />}
+            label="Active sub-admins"
+            value={data.metrics?.activeSubAdmins || 0}
+          />
+          <Metric
+            icon={<Mail />}
+            label="Pending invites"
+            value={data.metrics?.pendingInvitations || 0}
+          />
         </div>
       )}
       {section === "/products" && (
-      <>
-      <div className="admin-list-head">
-        <div>
-          <h2>Products</h2>
-        </div>
-        <div className="admin-list-actions">
-          <label className="admin-order-search">
-            <Search size={18} aria-hidden="true" />
-            <input
-              type="search"
-              value={productSearch}
-              onChange={(event) => setProductSearch(event.target.value)}
-              placeholder="Search products"
-              aria-label="Search products by name or description"
-            />
-          </label>
-          <button
-            type="button"
-            className={`btn ${show ? "btn-admin-cancel" : "btn-dark class-payment-pill"}`}
-            onClick={() => {
-              if (show) {
-                setShow(false);
-                setEditingProductId("");
-                setForm(blank);
-                setProductErrors({});
-                setProductValidationAttempted(false);
-                setImagePreview("");
-              } else setShow(true);
-            }}
-          >
-            {show ? <X size={16} /> : <Plus size={16} />}
-            {show ? "Cancel" : "Add product"}
-          </button>
-        </div>
-      </div>
-      {show && (
-        <form
-          ref={productFormRef}
-          className="admin-product-form"
-          noValidate
-          onSubmit={create}
-        >
-          <h3 className="admin-form-title wide">
-            {editingProductId ? "Edit product" : "Add product"}
-          </h3>
-          <label>
-            Product name
-            <input
-              required
-              minLength="2"
-              maxLength="120"
-              aria-invalid={Boolean(productErrors.name)}
-              aria-describedby={productErrors.name ? "product-name-help" : undefined}
-              value={form.name}
-              onChange={(e) => updateProductField("name", e.target.value)}
-            />
-            {productValidationAttempted && productErrors.name && (
-              <small id="product-name-help" className="admin-field-error" role="alert">
-                {productErrors.name}
-              </small>
-            )}
-          </label>
-          <label>
-            Price (₹)
-            <input
-              required
-              type="number"
-              min="1"
-              step="0.01"
-              aria-invalid={Boolean(productErrors.price)}
-              aria-describedby={productErrors.price ? "product-price-help" : undefined}
-              value={form.price}
-              onChange={(e) => updateProductField("price", e.target.value)}
-            />
-            {productValidationAttempted && productErrors.price && (
-              <small id="product-price-help" className="admin-field-error" role="alert">
-                {productErrors.price}
-              </small>
-            )}
-          </label>
-          <label>
-            Category
-            <select
-              required
-              aria-invalid={Boolean(productErrors.category)}
-              aria-describedby={productErrors.category ? "product-category-help" : undefined}
-              value={form.category}
-              onChange={(e) => updateProductField("category", e.target.value)}
-            >
-              <option value="">Select a category</option>
-              <option>Devoted to god</option>
-              <option>Mood uplifters</option>
-              <option>Other</option>
-            </select>
-            {productValidationAttempted && productErrors.category && (
-              <small id="product-category-help" className="admin-field-error" role="alert">
-                {productErrors.category}
-              </small>
-            )}
-          </label>
-          <label>
-            Stock
-            <input
-              required
-              type="number"
-              min="0"
-              step="1"
-              aria-invalid={Boolean(productErrors.stock)}
-              aria-describedby={productErrors.stock ? "product-stock-help" : undefined}
-              value={form.stock}
-              onChange={(e) => updateProductField("stock", e.target.value)}
-            />
-            {productValidationAttempted && productErrors.stock && (
-              <small id="product-stock-help" className="admin-field-error" role="alert">
-                {productErrors.stock}
-              </small>
-            )}
-          </label>
-          <label>
-            Return window (days)
-            <input
-              type="number"
-              min="1"
-              max="90"
-              step="1"
-              required={form.returnable}
-              disabled={!form.returnable}
-              aria-invalid={Boolean(productErrors.returnWindowDays)}
-              aria-describedby={
-                productErrors.returnWindowDays
-                  ? "product-return-window-help"
-                  : "product-return-window-note"
-              }
-              value={form.returnWindowDays}
-              onChange={(e) =>
-                updateProductField("returnWindowDays", e.target.value)
-              }
-            />
-            <small
-              id={
-                productErrors.returnWindowDays
-                  ? "product-return-window-help"
-                  : "product-return-window-note"
-              }
-              className={
-                productErrors.returnWindowDays
-                  ? "admin-field-error"
-                  : "admin-field-help"
-              }
-            >
-              {productValidationAttempted && productErrors.returnWindowDays
-                ? productErrors.returnWindowDays
-                : form.returnable
-                  ? "Required for returnable products. Counted from the delivery date."
-                  : "This product is marked non-returnable."}
-            </small>
-          </label>
-          <label className="check-label">
-            <input
-              type="checkbox"
-              checked={!form.returnable}
-              onChange={(event) => {
-                const nonReturnable = event.target.checked;
-                const next = {
-                  ...form,
-                  returnable: !nonReturnable,
-                  ...(nonReturnable ? { returnWindowDays: "" } : {}),
-                };
-                setForm(next);
-                if (productValidationAttempted)
-                  setProductErrors(
-                    validateProductForm(next, !editingProductId),
-                  );
-              }}
-            />{" "}
-            Non-returnable
-          </label>
-          <label className="wide">
-            Product image
-            <input
-              required={!editingProductId}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              aria-invalid={Boolean(productErrors.image)}
-              aria-describedby="product-image-help"
-              onChange={(e) =>
-                updateProductField("image", e.target.files?.[0] || null)
-              }
-            />
-            <small
-              id="product-image-help"
-              className={productErrors.image ? "admin-field-error" : "admin-field-help"}
-              aria-live="polite"
-            >
-              {productValidationAttempted && productErrors.image
-                ? productErrors.image
-                : editingProductId
-                  ? "Choose a new image only if you want to replace the current one. JPEG, PNG, WebP, or GIF; up to 5 MB."
-                  : "JPEG, PNG, WebP, or GIF; up to 5 MB."}
-            </small>
-            {imagePreview && (
-              <img
-                src={imagePreview}
-                alt="Selected product preview"
-                style={{ display: "block", maxWidth: 180, marginTop: 8 }}
-              />
-            )}
-          </label>
-          <label className="wide">
-            Short description
-            <input
-              required
-              maxLength="180"
-              aria-invalid={Boolean(productErrors.shortDescription)}
-              aria-describedby={productErrors.shortDescription ? "product-short-description-help" : undefined}
-              value={form.shortDescription}
-              onChange={(e) =>
-                updateProductField("shortDescription", e.target.value)
-              }
-            />
-            {productValidationAttempted && productErrors.shortDescription && (
-              <small id="product-short-description-help" className="admin-field-error" role="alert">
-                {productErrors.shortDescription}
-              </small>
-            )}
-          </label>
-          <label className="wide">
-            Description
-            <input
-              required
-              maxLength="3000"
-              aria-invalid={Boolean(productErrors.description)}
-              aria-describedby={productErrors.description ? "product-description-help" : undefined}
-              value={form.description}
-              onChange={(e) =>
-                updateProductField("description", e.target.value)
-              }
-            />
-            {productValidationAttempted && productErrors.description && (
-              <small id="product-description-help" className="admin-field-error" role="alert">
-                {productErrors.description}
-              </small>
-            )}
-          </label>
-          <button
-            className="btn btn-admin-save class-payment-pill"
-            disabled={busy}
-          >
-            {busy
-              ? "Saving…"
-              : editingProductId
-                ? "Update product"
-                : "Save product"}
-          </button>
-        </form>
-      )}
-      <div className="admin-product-list">
-        {data.products?.map((p) => (
-          <article className="admin-product-card" key={p._id}>
-            <div className="admin-product-overview">
-              <div className="admin-product-identity">
-                {p.image && <img src={p.image} alt="" />}
-                <b>{p.name}</b>
-              </div>
-              <div className="admin-product-meta">
-                <span>{p.category}</span>
-                <span>₹{p.price}</span>
-                <span>{p.stock} in stock</span>
-                <span>
-                  {p.returnable === false
-                    ? "Non-returnable"
-                    : p.returnWindowDays
-                    ? `${p.returnWindowDays}-day returns`
-                    : "Return policy not set"}
-                </span>
-              </div>
+        <>
+          <div className="admin-list-head">
+            <div>
+              <h2>Products</h2>
             </div>
-            <div className="admin-row-actions">
+            <div className="admin-list-actions">
+              <label className="admin-order-search">
+                <Search size={18} aria-hidden="true" />
+                <input
+                  type="search"
+                  value={productSearch}
+                  onChange={(event) => setProductSearch(event.target.value)}
+                  placeholder="Search products"
+                  aria-label="Search products by name or description"
+                />
+              </label>
               <button
                 type="button"
-                className="btn btn-outline admin-product-edit"
-                aria-label={`Edit ${p.name}`}
-                title="Edit product"
-                onClick={() => editProduct(p)}
+                className={`btn ${show ? "btn-admin-cancel" : "btn-dark class-payment-pill"}`}
+                onClick={() => {
+                  if (show) {
+                    setShow(false);
+                    setEditingProductId("");
+                    setForm(blank);
+                    setProductErrors({});
+                    setProductValidationAttempted(false);
+                    setImagePreview("");
+                  } else setShow(true);
+                }}
               >
-                <Pencil size={15} />
-              </button>
-              <button
-                type="button"
-                className="btn btn-danger admin-product-delete"
-                aria-label={
-                  deletingProduct === p._id
-                    ? `Deleting ${p.name}`
-                    : `Delete ${p.name}`
-                }
-                title="Delete product"
-                disabled={deletingProduct === p._id}
-                onClick={() => remove(p._id)}
-              >
-                <Trash2 size={15} />
+                {show ? <X size={16} /> : <Plus size={16} />}
+                {show ? "Cancel" : "Add product"}
               </button>
             </div>
-          </article>
-        ))}
-        {!data.products?.length && (
-          <p className="table-empty">
-            {productSearch.trim()
-              ? "No products match your search."
-              : "No products yet. Add your first fragrance above."}
-          </p>
-        )}
-      </div>
-      {productPagination.total > 0 && (
-        <div className="admin-pagination">
-          <button
-            className="btn btn-outline"
-            disabled={productPage <= 1}
-            onClick={() => loadProducts(productPage - 1)}
-          >
-            <ChevronLeft size={16} /> Previous
-          </button>
-          <span>
-            Page {productPage} of {productPagination.pages} ·{" "}
-            {productPagination.total} products
-          </span>
-          <button
-            className="btn btn-outline"
-            disabled={productPage >= productPagination.pages}
-            onClick={() => loadProducts(productPage + 1)}
-          >
-            Next <ChevronRight size={16} />
-          </button>
-        </div>
-      )}
-      </>
+          </div>
+          {show && (
+            <form
+              ref={productFormRef}
+              className="admin-product-form"
+              noValidate
+              onSubmit={create}
+            >
+              <h3 className="admin-form-title wide">
+                {editingProductId ? "Edit product" : "Add product"}
+              </h3>
+              <label>
+                Product name
+                <input
+                  required
+                  minLength="2"
+                  maxLength="120"
+                  aria-invalid={Boolean(productErrors.name)}
+                  aria-describedby={
+                    productErrors.name ? "product-name-help" : undefined
+                  }
+                  value={form.name}
+                  onChange={(e) => updateProductField("name", e.target.value)}
+                />
+                {productValidationAttempted && productErrors.name && (
+                  <small
+                    id="product-name-help"
+                    className="admin-field-error"
+                    role="alert"
+                  >
+                    {productErrors.name}
+                  </small>
+                )}
+              </label>
+              <label>
+                Price (₹)
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  aria-invalid={Boolean(productErrors.price)}
+                  aria-describedby={
+                    productErrors.price ? "product-price-help" : undefined
+                  }
+                  value={form.price}
+                  onChange={(e) => updateProductField("price", e.target.value)}
+                />
+                {productValidationAttempted && productErrors.price && (
+                  <small
+                    id="product-price-help"
+                    className="admin-field-error"
+                    role="alert"
+                  >
+                    {productErrors.price}
+                  </small>
+                )}
+              </label>
+              <label>
+                Category
+                <select
+                  required
+                  aria-invalid={Boolean(productErrors.category)}
+                  aria-describedby={
+                    productErrors.category ? "product-category-help" : undefined
+                  }
+                  value={form.category}
+                  onChange={(e) =>
+                    updateProductField("category", e.target.value)
+                  }
+                >
+                  <option value="">Select a category</option>
+                  <option>Devoted to god</option>
+                  <option>Mood uplifters</option>
+                  <option>Other</option>
+                </select>
+                {productValidationAttempted && productErrors.category && (
+                  <small
+                    id="product-category-help"
+                    className="admin-field-error"
+                    role="alert"
+                  >
+                    {productErrors.category}
+                  </small>
+                )}
+              </label>
+              <label>
+                Stock
+                <input
+                  required
+                  type="number"
+                  min="0"
+                  step="1"
+                  aria-invalid={Boolean(productErrors.stock)}
+                  aria-describedby={
+                    productErrors.stock ? "product-stock-help" : undefined
+                  }
+                  value={form.stock}
+                  onChange={(e) => updateProductField("stock", e.target.value)}
+                />
+                {productValidationAttempted && productErrors.stock && (
+                  <small
+                    id="product-stock-help"
+                    className="admin-field-error"
+                    role="alert"
+                  >
+                    {productErrors.stock}
+                  </small>
+                )}
+              </label>
+              <label>
+                Return window (days)
+                <input
+                  type="number"
+                  min="1"
+                  max="90"
+                  step="1"
+                  required={form.returnable}
+                  disabled={!form.returnable}
+                  aria-invalid={Boolean(productErrors.returnWindowDays)}
+                  aria-describedby={
+                    productErrors.returnWindowDays
+                      ? "product-return-window-help"
+                      : "product-return-window-note"
+                  }
+                  value={form.returnWindowDays}
+                  onChange={(e) =>
+                    updateProductField("returnWindowDays", e.target.value)
+                  }
+                />
+                <small
+                  id={
+                    productErrors.returnWindowDays
+                      ? "product-return-window-help"
+                      : "product-return-window-note"
+                  }
+                  className={
+                    productErrors.returnWindowDays
+                      ? "admin-field-error"
+                      : "admin-field-help"
+                  }
+                >
+                  {productValidationAttempted && productErrors.returnWindowDays
+                    ? productErrors.returnWindowDays
+                    : form.returnable
+                      ? "Required for returnable products. Counted from the delivery date."
+                      : "This product is marked non-returnable."}
+                </small>
+              </label>
+              <label className="check-label">
+                <input
+                  type="checkbox"
+                  checked={!form.returnable}
+                  onChange={(event) => {
+                    const nonReturnable = event.target.checked;
+                    const next = {
+                      ...form,
+                      returnable: !nonReturnable,
+                      ...(nonReturnable ? { returnWindowDays: "" } : {}),
+                    };
+                    setForm(next);
+                    if (productValidationAttempted)
+                      setProductErrors(
+                        validateProductForm(next, !editingProductId),
+                      );
+                  }}
+                />{" "}
+                Non-returnable
+              </label>
+              <label className="wide">
+                Product image
+                <input
+                  required={!editingProductId}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  aria-invalid={Boolean(productErrors.image)}
+                  aria-describedby="product-image-help"
+                  onChange={(e) =>
+                    updateProductField("image", e.target.files?.[0] || null)
+                  }
+                />
+                <small
+                  id="product-image-help"
+                  className={
+                    productErrors.image
+                      ? "admin-field-error"
+                      : "admin-field-help"
+                  }
+                  aria-live="polite"
+                >
+                  {productValidationAttempted && productErrors.image
+                    ? productErrors.image
+                    : editingProductId
+                      ? "Choose a new image only if you want to replace the current one. JPEG, PNG, WebP, or GIF; up to 5 MB."
+                      : "JPEG, PNG, WebP, or GIF; up to 5 MB."}
+                </small>
+                {imagePreview && (
+                  <img
+                    src={imagePreview}
+                    alt="Selected product preview"
+                    style={{ display: "block", maxWidth: 180, marginTop: 8 }}
+                  />
+                )}
+              </label>
+              <label className="wide">
+                Short description
+                <input
+                  required
+                  maxLength="180"
+                  aria-invalid={Boolean(productErrors.shortDescription)}
+                  aria-describedby={
+                    productErrors.shortDescription
+                      ? "product-short-description-help"
+                      : undefined
+                  }
+                  value={form.shortDescription}
+                  onChange={(e) =>
+                    updateProductField("shortDescription", e.target.value)
+                  }
+                />
+                {productValidationAttempted &&
+                  productErrors.shortDescription && (
+                    <small
+                      id="product-short-description-help"
+                      className="admin-field-error"
+                      role="alert"
+                    >
+                      {productErrors.shortDescription}
+                    </small>
+                  )}
+              </label>
+              <label className="wide">
+                Description
+                <input
+                  required
+                  maxLength="3000"
+                  aria-invalid={Boolean(productErrors.description)}
+                  aria-describedby={
+                    productErrors.description
+                      ? "product-description-help"
+                      : undefined
+                  }
+                  value={form.description}
+                  onChange={(e) =>
+                    updateProductField("description", e.target.value)
+                  }
+                />
+                {productValidationAttempted && productErrors.description && (
+                  <small
+                    id="product-description-help"
+                    className="admin-field-error"
+                    role="alert"
+                  >
+                    {productErrors.description}
+                  </small>
+                )}
+              </label>
+              <button
+                className="btn btn-admin-save class-payment-pill"
+                disabled={busy}
+              >
+                {busy
+                  ? "Saving…"
+                  : editingProductId
+                    ? "Update product"
+                    : "Save product"}
+              </button>
+            </form>
+          )}
+          <div className="admin-product-list">
+            {data.products?.map((p) => (
+              <article className="admin-product-card" key={p._id}>
+                <div className="admin-product-overview">
+                  <div className="admin-product-identity">
+                    {p.image && <img src={p.image} alt="" />}
+                    <b>{p.name}</b>
+                  </div>
+                  <div className="admin-product-meta">
+                    <span>{p.category}</span>
+                    <span>₹{p.price}</span>
+                    <span>{p.stock} in stock</span>
+                    <span>
+                      {p.returnable === false
+                        ? "Non-returnable"
+                        : p.returnWindowDays
+                          ? `${p.returnWindowDays}-day returns`
+                          : "Return policy not set"}
+                    </span>
+                  </div>
+                </div>
+                <div className="admin-row-actions">
+                  <button
+                    type="button"
+                    className="btn btn-outline admin-product-edit"
+                    aria-label={`Edit ${p.name}`}
+                    title="Edit product"
+                    onClick={() => editProduct(p)}
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger admin-product-delete"
+                    aria-label={
+                      deletingProduct === p._id
+                        ? `Deleting ${p.name}`
+                        : `Delete ${p.name}`
+                    }
+                    title="Delete product"
+                    disabled={deletingProduct === p._id}
+                    onClick={() => setProductToDelete(p)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </article>
+            ))}
+            {!data.products?.length && (
+              <p className="table-empty">
+                {productSearch.trim()
+                  ? "No products match your search."
+                  : "No products yet. Add your first fragrance above."}
+              </p>
+            )}
+          </div>
+          {productPagination.total > 0 && (
+            <div className="admin-pagination">
+              <button
+                className="btn btn-outline"
+                disabled={productPage <= 1}
+                onClick={() => loadProducts(productPage - 1)}
+              >
+                <ChevronLeft size={16} /> Previous
+              </button>
+              <span>
+                Page {productPage} of {productPagination.pages} ·{" "}
+                {productPagination.total} products
+              </span>
+              <button
+                className="btn btn-outline"
+                disabled={productPage >= productPagination.pages}
+                onClick={() => loadProducts(productPage + 1)}
+              >
+                Next <ChevronRight size={16} />
+              </button>
+            </div>
+          )}
+        </>
       )}
       {section === "/orders" && <AdminOrders />}
       {section === "/classes" && <AdminClassSessionForm />}
       {section === "/bookings" && <AdminBookings />}
+      {section === "/services" && <AdminServices />}
+      {section === "/service-bookings" && <AdminServiceBookings />}
+      {section === "/sub-admins" && user.role === "admin" && (
+        <AdminSubAdmins onToast={setToast} />
+      )}
+      {section === "/subscription" && user.role === "sub_admin" && (
+        <SubAdminSubscription />
+      )}
     </section>
   );
 }

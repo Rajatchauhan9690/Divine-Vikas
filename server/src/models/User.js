@@ -13,7 +13,11 @@ const userSchema = new mongoose.Schema(
       index: true,
     },
     password: { type: String, required: true, minlength: 8, select: false },
-    role: { type: String, enum: ["customer", "admin"], default: "customer" },
+    role: {
+      type: String,
+      enum: ["customer", "sub_admin", "admin"],
+      default: "customer",
+    },
     phone: { type: String, trim: true, maxlength: 20, default: "" },
     addresses: [
       {
@@ -31,6 +35,32 @@ const userSchema = new mongoose.Schema(
       },
     ],
     active: { type: Boolean, default: true },
+    subscription: {
+      planKey: { type: String, default: "" },
+      planName: { type: String, default: "" },
+      amount: { type: Number, default: 0 },
+      serviceLimit: { type: Number, default: 0 },
+      sessionLimit: { type: Number, default: 0 },
+      durationMonths: { type: Number, enum: [1, 3, 12], default: 1 },
+      billingMode: {
+        type: String,
+        enum: ["manual", "autopay", ""],
+        default: "",
+      },
+      status: {
+        type: String,
+        enum: ["inactive", "active", "past_due", "cancelled"],
+        default: "inactive",
+      },
+      currentPeriodEnd: { type: Date, default: null },
+      providerSubscriptionId: { type: String, default: "" },
+      paymentAttemptId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "SubAdminSubscriptionPayment",
+        default: null,
+      },
+      lastPaymentId: { type: String, default: "" },
+    },
     failedLoginAttempts: { type: Number, default: 0, select: false },
     lockUntil: { type: Date, default: null, select: false },
   },
@@ -38,9 +68,15 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.pre("save", async function () {
-  if (this.isModified("password"))
+  if (this.isModified("password") && !this.$locals.passwordHashed)
     this.password = await bcrypt.hash(this.password, 12);
 });
+userSchema.statics.createWithPasswordHash = async function (values) {
+  const user = new this(values);
+  user.$locals.passwordHashed = true;
+  await user.save();
+  return user;
+};
 userSchema.methods.comparePassword = function (password) {
   return bcrypt.compare(password, this.password);
 };

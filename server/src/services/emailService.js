@@ -125,6 +125,36 @@ export async function sendPasswordResetEmail(email, otp) {
   });
 }
 
+export async function sendSubAdminInvitationEmail({ email, name, link }) {
+  const { from, transport } = createTransport();
+  const greeting = name ? `Hello ${escapeHtml(name)},` : "Hello,";
+  const content = `<p style="margin:0 0 20px;color:#59645b;font-size:14px;line-height:1.6">${greeting} an administrator has invited you to manage appointment services on Divine Vikas.</p>
+  <p style="margin:0 0 20px"><a href="${escapeHtml(link)}" style="display:inline-block;padding:13px 20px;border-radius:6px;background-color:#123f32;color:#ffffff;text-decoration:none;font-size:14px;font-weight:bold">Accept invitation</a></p>
+  <p style="margin:0;color:#777b73;font-size:12px;line-height:1.6">This one-time link expires in 24 hours. If you weren’t expecting this invitation, you can ignore this email.</p>`;
+  await transport.sendMail({
+    from,
+    to: email,
+    subject: "You’re invited to Divine Vikas",
+    text: [
+      "DIVINE VIKAS",
+      "",
+      name ? `Hello ${name},` : "Hello,",
+      "An administrator has invited you to manage appointment services.",
+      "",
+      `Accept your invitation: ${link}`,
+      "",
+      "This one-time link expires in 24 hours.",
+    ].join("\n"),
+    html: renderConfirmationEmail({
+      preheader: "Accept your invitation to manage appointment services.",
+      eyebrow: "ADMINISTRATOR INVITATION",
+      title: "You’re invited",
+      subtitle: "Create your account to start managing appointment services.",
+      content,
+    }),
+  });
+}
+
 export async function sendOrderConfirmationEmail({
   email,
   orderId,
@@ -201,6 +231,7 @@ export async function sendClassBookingConfirmationEmail({
   seatNumbers,
   startsAt,
   total,
+  appointment = false,
 }) {
   const { from, transport } = createTransport();
   const safeTitle = escapeHtml(classTitle);
@@ -214,9 +245,9 @@ export async function sendClassBookingConfirmationEmail({
   const text = [
     "DIVINE VIKAS",
     "",
-    "Your class booking is confirmed",
+    appointment ? "Your appointment is confirmed" : "Your class booking is confirmed",
     classTitle,
-    `Seats: ${seatList}`,
+    ...(appointment ? [] : [`Seats: ${seatList}`]),
     `Date and time: ${startLabel} (IST)`,
     `Total paid: ₹${Number(total).toFixed(2)}`,
     "",
@@ -236,25 +267,25 @@ export async function sendClassBookingConfirmationEmail({
       <td style="padding:12px 0;border-bottom:1px solid #eeece6;color:#777b73;font-size:13px">Date &amp; time</td>
       <td align="right" style="padding:12px 0;border-bottom:1px solid #eeece6;color:#252923;font-size:13px;font-weight:bold">${escapeHtml(startLabel)} IST</td>
     </tr>
-    <tr>
+    ${appointment ? "" : `<tr>
       <td style="padding:12px 0;border-bottom:1px solid #eeece6;color:#777b73;font-size:13px">Seats</td>
       <td align="right" style="padding:12px 0;border-bottom:1px solid #eeece6;color:#252923;font-size:13px;font-weight:bold">${escapeHtml(seatList)}</td>
-    </tr>
+    </tr>`}
     <tr>
       <td style="padding:18px 0 0;color:#252923;font-size:15px;font-weight:bold">Total paid</td>
       <td align="right" style="padding:18px 0 0;color:#123f32;font-size:20px;font-weight:bold;white-space:nowrap">₹${Number(total).toFixed(2)}</td>
     </tr>
   </table>
-  <p style="margin:24px 0 0;padding:16px;border-left:3px solid #b9852d;background-color:#fbf9f4;color:#59645b;font-size:13px;line-height:1.6">Your seat${seatNumbers.length === 1 ? " is" : "s are"} reserved. We look forward to welcoming you.</p>`;
+  <p style="margin:24px 0 0;padding:16px;border-left:3px solid #b9852d;background-color:#fbf9f4;color:#59645b;font-size:13px;line-height:1.6">${appointment ? "Your appointment time is reserved." : `Your seat${seatNumbers.length === 1 ? " is" : "s are"} reserved.`} We look forward to welcoming you.</p>`;
 
   await transport.sendMail({
     from,
     to: email,
-    subject: `Class booking confirmed — ${subjectTitle}`,
+    subject: `${appointment ? "Appointment" : "Class booking"} confirmed — ${subjectTitle}`,
     text,
     html: renderConfirmationEmail({
-      preheader: `Your booking for ${classTitle} is confirmed.`,
-      title: "Your booking is confirmed",
+      preheader: `Your ${appointment ? "appointment" : "booking"} for ${classTitle} is confirmed.`,
+      title: appointment ? "Your appointment is confirmed" : "Your booking is confirmed",
       subtitle: "Your payment is complete and your place is reserved.",
       content,
     }),

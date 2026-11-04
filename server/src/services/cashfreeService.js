@@ -7,7 +7,7 @@ const cashfreeBase = () =>
 
 export async function cashfreeRequest(
   path,
-  { method = "POST", body, headers = {} } = {},
+  { method = "POST", body, headers = {}, apiVersion = "2023-08-01" } = {},
 ) {
   if (!process.env.CASHFREE_CLIENT_ID || !process.env.CASHFREE_CLIENT_SECRET)
     throw new AppError(
@@ -19,7 +19,7 @@ export async function cashfreeRequest(
     method,
     headers: {
       ...(body ? { "Content-Type": "application/json" } : {}),
-      "x-api-version": "2023-08-01",
+      "x-api-version": apiVersion,
       "x-client-id": process.env.CASHFREE_CLIENT_ID,
       "x-client-secret": process.env.CASHFREE_CLIENT_SECRET,
       ...headers,

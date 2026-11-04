@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { api } from "../services/api";
 import AdminToast from "./AdminToast";
+import AdminConfirmDialog from "./AdminConfirmDialog";
 
 function localDateValue(date) {
   const year = date.getFullYear();
@@ -50,6 +51,7 @@ export default function AdminClassSessionForm() {
   const [editingSessionId, setEditingSessionId] = useState("");
   const [updatingSession, setUpdatingSession] = useState("");
   const [deletingSession, setDeletingSession] = useState("");
+  const [sessionToDelete, setSessionToDelete] = useState(null);
   const sessionsRequest = useRef(null);
   const sessionSearchRef = useRef(sessionSearch);
   const sessionViewRef = useRef(sessionView);
@@ -236,12 +238,7 @@ export default function AdminClassSessionForm() {
     setShowCreateForm(true);
   }
   async function deleteSession(session) {
-    if (
-      !window.confirm(
-        `Delete "${session.title}"? Sessions with held or booked seats cannot be deleted.`,
-      )
-    )
-      return;
+    setSessionToDelete(null);
     setDeletingSession(session._id);
     try {
       await api.delete(`/admin/classes/${session._id}`);
@@ -297,7 +294,7 @@ export default function AdminClassSessionForm() {
     <section className="admin-class-sessions">
       <div className="admin-list-head">
         <div>
-          <h2>Class sessions</h2>
+          <h2>Sessions</h2>
           <p>Create a session and generate its seats automatically.</p>
         </div>
         <div className="admin-class-session-header-actions">
@@ -341,11 +338,20 @@ export default function AdminClassSessionForm() {
             }}
           >
             {showCreateForm ? <X size={16} /> : <CalendarPlus size={16} />}
-            {showCreateForm ? "Cancel" : "Add class"}
+            {showCreateForm ? "Cancel" : "Add session"}
           </button>
         </div>
       </div>
       <AdminToast toast={toast} onDismiss={dismissToast} />
+      {sessionToDelete && (
+        <AdminConfirmDialog
+          title={`Delete "${sessionToDelete.title}"?`}
+          description="Sessions with held or booked seats cannot be deleted. This action cannot be undone."
+          busy={deletingSession === sessionToDelete._id}
+          onCancel={() => setSessionToDelete(null)}
+          onConfirm={() => deleteSession(sessionToDelete)}
+        />
+      )}
       {showCreateForm && (
       <form
         ref={sessionFormRef}
@@ -353,7 +359,7 @@ export default function AdminClassSessionForm() {
         onSubmit={submit}
       >
         <h3 className="admin-form-title wide">
-          {editingSessionId ? "Edit class session" : "Add class session"}
+          {editingSessionId ? "Edit session" : "Add session"}
         </h3>
         <div className="admin-class-title-group wide">
           <label>
@@ -460,8 +466,8 @@ export default function AdminClassSessionForm() {
           {saving
             ? "Saving…"
             : editingSessionId
-              ? "Update class session"
-              : "Create class session"}
+              ? "Update session"
+              : "Create session"}
         </button>
       </form>
       )}
@@ -543,18 +549,9 @@ export default function AdminClassSessionForm() {
                     title={
                       new Date(session.startsAt) <= new Date()
                         ? "Past sessions cannot be edited."
-                        : session.seats?.some((seat) =>
-                        ["pending_payment", "booked"].includes(seat.status),
-                      )
-                        ? "Sessions with held or booked seats cannot be edited."
                         : "Edit class session"
                     }
-                    disabled={
-                      new Date(session.startsAt) <= new Date() ||
-                      session.seats?.some((seat) =>
-                        ["pending_payment", "booked"].includes(seat.status),
-                      )
-                    }
+                    disabled={new Date(session.startsAt) <= new Date()}
                     onClick={() => editSession(session)}
                   >
                     <Pencil size={15} />
@@ -576,7 +573,7 @@ export default function AdminClassSessionForm() {
                       deletingSession === session._id ||
                       new Date(session.startsAt) <= new Date()
                     }
-                    onClick={() => deleteSession(session)}
+                    onClick={() => setSessionToDelete(session)}
                   >
                     <Trash2 size={15} />
                   </button>

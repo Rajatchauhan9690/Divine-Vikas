@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Minus, Plus, Trash2, ShoppingBag, ArrowLeft } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useCart } from "../features/cart/CartContext";
@@ -6,6 +6,7 @@ import { useAuth } from "../features/auth/AuthContext";
 import { api } from "../services/api";
 import { useEffect, useState } from "react";
 import CashfreeCustomCheckout from "../components/CashfreeCustomCheckout";
+import PaymentSuccess from "../components/PaymentSuccess";
 const emptyAddress = {
   label: "Home",
   fullName: "",
@@ -25,6 +26,8 @@ export default function Cart() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [payment, setPayment] = useState(null);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [paymentSuccessDetails, setPaymentSuccessDetails] = useState([]);
   const [checkoutActive, setCheckoutActive] = useState(false);
   const [showPaymentExitConfirm, setShowPaymentExitConfirm] = useState(false);
   const [addresses, setAddresses] = useState([]);
@@ -41,8 +44,8 @@ export default function Cart() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showPaymentExitConfirm]);
   useEffect(() => {
-    if (user)
-      api
+    if (!user || user.role === "admin") return;
+    api
         .get("/profile")
         .then((r) => {
           const a = r.data.profile.addresses || [];
@@ -133,9 +136,28 @@ export default function Cart() {
     );
     if (data.paymentStatus === "paid" && data.order) {
       payment.cartProductIds.forEach((productId) => remove(productId));
+      setPaymentSuccessDetails([
+        {
+          label: "Order",
+          value: `#${String(data.order._id).slice(-8).toUpperCase()}`,
+        },
+        {
+          label: "Items",
+          value: data.order.items
+            .map((item) => `${item.name} × ${item.quantity}`)
+            .join(", "),
+        },
+        {
+          label: "Total",
+          value: Number(data.order.total).toLocaleString("en-IN", {
+            style: "currency",
+            currency: "INR",
+          }),
+        },
+      ]);
       setPayment(null);
       setCheckoutActive(false);
-      nav("/orders", { replace: true });
+      setPaymentSuccess(true);
     } else if (
       data.paymentStatus === "failed" ||
       data.paymentStatus === "expired"
@@ -156,8 +178,21 @@ export default function Cart() {
     }
     return data.paymentStatus;
   }
+  if (user?.role === "admin") return <Navigate to="/admin" replace />;
   return (
     <section className="section cart-page">
+      {paymentSuccess && (
+        <PaymentSuccess
+          title="Your order is confirmed"
+          message="Your payment was received and your order has been placed."
+          details={paymentSuccessDetails}
+          returnTo="your orders"
+          onClose={() => {
+            setPaymentSuccess(false);
+            nav("/orders", { replace: true });
+          }}
+        />
+      )}
       {checkoutActive &&
         payment &&
         createPortal(

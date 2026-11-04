@@ -23,7 +23,7 @@ export function csrfProtection(req, _res, next) {
   const origin = req.get("origin");
   // Browser requests must originate from the configured frontend. Non-browser clients
   // without Origin still need the double-submit token for cookie-backed auth actions.
-  if (origin && origin !== env.clientOrigin)
+  if (origin && !env.clientOrigins.includes(origin))
     return next(
       new AppError(
         "Request origin is not allowed",

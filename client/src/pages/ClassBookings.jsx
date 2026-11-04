@@ -3,6 +3,8 @@ import {
   ArrowLeft,
   Armchair,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   UserRound,
   ShieldCheck,
@@ -13,6 +15,7 @@ import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
 import AdminToast from "../components/AdminToast";
 import CashfreeCustomCheckout from "../components/CashfreeCustomCheckout";
+import PaymentSuccess from "../components/PaymentSuccess";
 
 function formatRetryCountdown(seconds) {
   const minutes = Math.floor(seconds / 60);
@@ -21,11 +24,13 @@ function formatRetryCountdown(seconds) {
 }
 
 const CUSTOM_CHECKOUT_STORAGE_KEY = "class-custom-checkout";
+const SESSIONS_PER_PAGE = 10;
 
 export default function ClassBookings() {
   const { user, ready } = useAuth();
   const location = useLocation();
   const [sessions, setSessions] = useState([]);
+  const [sessionsPage, setSessionsPage] = useState(1);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [paymentHolds, setPaymentHolds] = useState([]);
   const [selectedId, setSelectedId] = useState("");
@@ -41,12 +46,35 @@ export default function ClassBookings() {
   const [busySeat, setBusySeat] = useState("");
   const [notice, setNotice] = useState({ type: "", message: "" });
   const [toast, setToast] = useState(null);
+  const [paymentSuccess, setPaymentSuccess] = useState("");
+  const [paymentSuccessDetails, setPaymentSuccessDetails] = useState([]);
   const [classPaymentRetryAt, setClassPaymentRetryAt] = useState(0);
   const [classPaymentRetrySeconds, setClassPaymentRetrySeconds] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
   const verifiedReturn = useRef("");
   const exitPromptRef = useRef(null);
   const customCheckoutRestoreAttempted = useRef(false);
+  const sessionsPageCount = Math.max(
+    1,
+    Math.ceil(sessions.length / SESSIONS_PER_PAGE),
+  );
+  const currentSessionsPage = Math.min(sessionsPage, sessionsPageCount);
+  const visibleSessions = sessions.slice(
+    (currentSessionsPage - 1) * SESSIONS_PER_PAGE,
+    currentSessionsPage * SESSIONS_PER_PAGE,
+  );
+
+  function showPaymentSuccess(classTitle, seatNumbers) {
+    setNotice({ type: "", message: "" });
+    setPaymentSuccess("Your payment was received and your session booking is confirmed.");
+    setPaymentSuccessDetails([
+      { label: "Session", value: classTitle },
+      {
+        label: "Seats",
+        value: seatNumbers.join(", "),
+      },
+    ]);
+  }
 
   useEffect(() => {
     if (!notice.type || !notice.message) {
@@ -143,7 +171,7 @@ export default function ClassBookings() {
   }, []);
 
   useEffect(() => {
-    if (user) {
+    if (user && user.role !== "admin") {
       loadSessions();
       loadPaymentHolds();
       api
@@ -170,6 +198,7 @@ export default function ClassBookings() {
   useEffect(() => {
     if (
       !user ||
+      user.role === "admin" ||
       !sessionsLoaded ||
       customCheckoutRestoreAttempted.current ||
       searchParams.get("payment") === "return"
@@ -288,14 +317,16 @@ export default function ClassBookings() {
         setBookingStep("seats");
         const paymentSucceeded = data.paymentStatus === "paid";
         const paymentFailed = data.paymentStatus === "failed";
-        setNotice({
-          type: paymentSucceeded ? "success" : "error",
-          message: paymentSucceeded
-            ? `Payment confirmed. Seat${data.booking.seatNumbers.length > 1 ? "s" : ""} ${data.booking.seatNumbers.join(", ")} ${data.booking.seatNumbers.length > 1 ? "are" : "is"} booked.`
-            : paymentFailed
+        if (paymentSucceeded) {
+          showPaymentSuccess(data.booking.classTitle, data.booking.seatNumbers);
+        } else {
+          setNotice({
+            type: "error",
+            message: paymentFailed
               ? `Cashfree reports this payment attempt failed. Seat${data.booking.seatNumbers.length > 1 ? "s" : ""} ${data.booking.seatNumbers.join(", ")} have been released. Select available seats to try again.`
               : "This checkout is no longer active. Check My bookings before starting another payment.",
-        });
+          });
+        }
         await Promise.all([loadSessions({ quiet: true }), loadPaymentHolds()]);
       })
       .catch(async (error) => {
@@ -354,6 +385,7 @@ export default function ClassBookings() {
     const paymentOrderId = searchParams.get("order_id");
     if (
       !user ||
+      user.role === "admin" ||
       searchParams.get("payment") !== "return" ||
       !classId ||
       (!seatNumber && !paymentOrderId)
@@ -376,12 +408,9 @@ export default function ClassBookings() {
       .then(async ({ data }) => {
         if (data.paymentStatus === "paid" || data.paymentStatus === "failed")
           sessionStorage.removeItem(CUSTOM_CHECKOUT_STORAGE_KEY);
-        if (data.paymentStatus === "paid")
-          setNotice({
-            type: "success",
-            message: `Payment confirmed. Seat${data.booking.seatNumbers.length > 1 ? "s" : ""} ${data.booking.seatNumbers.join(", ")} ${data.booking.seatNumbers.length > 1 ? "are" : "is"} booked.`,
-          });
-        else if (data.paymentStatus === "failed")
+        if (data.paymentStatus === "paid") {
+          showPaymentSuccess(data.booking.classTitle, data.booking.seatNumbers);
+        } else if (data.paymentStatus === "failed")
           setNotice({
             type: "error",
             message: `Payment was not completed. Seat${data.booking.seatNumbers.length > 1 ? "s" : ""} ${data.booking.seatNumbers.join(", ")} ${data.booking.seatNumbers.length > 1 ? "are" : "is"} available again.`,
@@ -576,10 +605,7 @@ export default function ClassBookings() {
         setPendingClassPayment(null);
         setSelectedSeatNumbers([]);
         setBookingStep("seats");
-        setNotice({
-          type: "success",
-          message: `Payment confirmed. Seat${seatNumbers.length > 1 ? "s" : ""} ${seatNumbers.join(", ")} ${seatNumbers.length > 1 ? "are" : "is"} booked.`,
-        });
+        showPaymentSuccess(verification.booking.classTitle, seatNumbers);
       } else if (verification.paymentStatus === "failed") {
         sessionStorage.removeItem(CUSTOM_CHECKOUT_STORAGE_KEY);
         setCheckoutActive(false);
@@ -691,10 +717,7 @@ export default function ClassBookings() {
         setPendingClassPayment(null);
         setSelectedSeatNumbers([]);
         setBookingStep("seats");
-        setNotice({
-          type: "success",
-          message: `Payment was confirmed. Seat${data.booking.seatNumbers.length > 1 ? "s" : ""} ${data.booking.seatNumbers.join(", ")} ${data.booking.seatNumbers.length > 1 ? "are" : "is"} booked.`,
-        });
+        showPaymentSuccess(data.booking.classTitle, data.booking.seatNumbers);
         return "paid";
       } else {
         sessionStorage.removeItem(CUSTOM_CHECKOUT_STORAGE_KEY);
@@ -722,10 +745,7 @@ export default function ClassBookings() {
       );
       let finalPaymentStatus = data.paymentStatus;
       if (data.paymentStatus === "paid") {
-        setNotice({
-          type: "success",
-          message: `Payment confirmed. Seat${data.booking.seatNumbers.length > 1 ? "s" : ""} ${data.booking.seatNumbers.join(", ")} ${data.booking.seatNumbers.length > 1 ? "are" : "is"} booked.`,
-        });
+        showPaymentSuccess(data.booking.classTitle, data.booking.seatNumbers);
       } else if (data.paymentStatus === "failed") {
         setNotice({
           type: "error",
@@ -784,6 +804,8 @@ export default function ClassBookings() {
         }}
       />
     );
+  if (user.role === "admin")
+    return <Navigate to="/admin/classes" replace />;
   const selectedSession = sessions.find(
     (session) => session._id === selectedId,
   );
@@ -793,6 +815,15 @@ export default function ClassBookings() {
   return (
     <section className="section class-booking-page">
       <AdminToast toast={toast} onDismiss={() => setToast(null)} />
+      {paymentSuccess && (
+        <PaymentSuccess
+          title="Your session booking is confirmed"
+          message={paymentSuccess}
+          details={paymentSuccessDetails}
+          returnTo="session bookings"
+          onClose={() => setPaymentSuccess("")}
+        />
+      )}
       {classPaymentRetrySeconds > 0 && (
         <div className="class-payment-retry-notice" role="status">
           Too many class payment attempts. Try again after 15 min.
@@ -915,72 +946,94 @@ export default function ClassBookings() {
           <article
             className={`class-seat-card ${
               bookingStep === "details"
-                ? "class-seat-card-details"
+                ? "class-seat-card-details class-session-detail-frame"
                 : "class-seat-card-step"
             }`}
           >
             {bookingStep === "details" && (
-              <div className="class-seat-summary">
-                <div className="class-detail-heading-row">
-                  <div>
+              <div className="class-seat-summary service-detail-card class-session-detail-card">
+                <header className="service-detail-hero">
+                  <div className="service-detail-hero-copy">
                     <span className="eyebrow">CLASS SESSION</span>
                     <h2>{selectedSession.title}</h2>
-                  </div>
-                  {selectedPaymentHold && (
-                    <div className="class-resume-payment-actions">
-                      <button
-                        type="button"
-                        className="btn btn-dark class-resume-payment"
-                        disabled={Boolean(busySeat)}
-                        onClick={() => resumePayment(selectedPaymentHold)}
-                      >
-                        Custom UPI / Card
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <p>{selectedSession.description}</p>
-                <div className="class-meta">
-                  <span>
-                    <UserRound size={17} /> {selectedSession.instructorName}
-                  </span>
-                  <span>
-                    <CalendarDays size={17} />
-                    {new Date(selectedSession.startsAt).toLocaleString([], {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
-                  </span>
-                  <span>
-                    <Clock3 size={17} />
-                    {selectedSession.durationMinutes} minutes
-                  </span>
-                </div>
-                <div className="class-session-price-row">
-                  {Number(selectedSession.price) > 0 ? (
-                    <strong className="class-price">
-                      ₹{Number(selectedSession.price).toLocaleString("en-IN")}
-                      <small>per seat</small>
-                    </strong>
-                  ) : (
-                    <p className="class-price-unavailable">
-                      The administrator has not set a price for this session
-                      yet.
+                    <p>
+                      {selectedSession.description ||
+                        "Join this guided class and reserve your place."}
                     </p>
-                  )}
-                  <button
-                    type="button"
-                    className="btn class-flow-button class-flow-button--green"
-                    disabled={!(Number(selectedSession.price) > 0)}
-                    onClick={() => setBookingStep("seats")}
-                  >
-                    Next
-                  </button>
+                  </div>
+                  <div className="service-detail-price">
+                    <span>Price per seat</span>
+                    <strong>
+                      {Number(selectedSession.price).toLocaleString("en-IN", {
+                        style: "currency",
+                        currency: "INR",
+                      })}
+                    </strong>
+                  </div>
+                </header>
+                <div className="service-detail-meta class-session-detail-meta">
+                  <span>
+                    <UserRound size={18} aria-hidden="true" />
+                    <span>
+                      <small>Instructor</small>
+                      <strong>{selectedSession.instructorName}</strong>
+                    </span>
+                  </span>
+                  <span>
+                    <CalendarDays size={18} aria-hidden="true" />
+                    <span>
+                      <small>Session date</small>
+                      <strong>
+                        {new Date(selectedSession.startsAt).toLocaleString([], {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </strong>
+                    </span>
+                  </span>
+                  <span>
+                    <Clock3 size={18} aria-hidden="true" />
+                    <span>
+                      <small>Duration</small>
+                      <strong>{selectedSession.durationMinutes} minutes</strong>
+                    </span>
+                  </span>
                 </div>
-                <p className="payment-hold-note">
-                  Select up to 2 seats. They are reserved only when you submit
-                  your contact details to start payment.
-                </p>
+                {selectedPaymentHold && (
+                  <div className="class-session-resume">
+                    <p>You have a payment in progress for this session.</p>
+                    <button
+                      type="button"
+                      className="btn btn-dark class-resume-payment"
+                      disabled={Boolean(busySeat)}
+                      onClick={() => resumePayment(selectedPaymentHold)}
+                    >
+                      Custom UPI / Card
+                    </button>
+                  </div>
+                )}
+                <div className="class-session-detail-footer">
+                  <p className="payment-hold-note">
+                    Select up to 2 seats. They are reserved only when you submit
+                    your contact details to start payment.
+                  </p>
+                  <div className="class-session-price-row">
+                    {!(Number(selectedSession.price) > 0) && (
+                      <p className="class-price-unavailable">
+                        The administrator has not set a price for this session
+                        yet.
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      className="btn class-flow-button class-flow-button--green"
+                      disabled={!(Number(selectedSession.price) > 0)}
+                      onClick={() => setBookingStep("seats")}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
             {bookingStep === "details" ? null : bookingStep === "seats" ? (
@@ -1259,59 +1312,93 @@ export default function ClassBookings() {
           </article>
         </div>
       ) : sessions.length === 0 ? (
-        <div className="class-empty">
+        <div className="class-empty" role="status" aria-live="polite">
           <CalendarDays size={30} />
-          <h2>No upcoming classes</h2>
+          <h2>No sessions available</h2>
           <p>Check back later for new sessions.</p>
         </div>
       ) : (
-        <div className="class-session-grid">
-          {sessions.map((session) => {
-            const available = session.seats.filter(
-              (seat) => seat.status === "available",
-            ).length;
-            return (
+        <>
+          <div className="class-session-grid">
+            {visibleSessions.map((session) => {
+              const available = session.seats.filter(
+                (seat) => seat.status === "available",
+              ).length;
+              return (
+                <button
+                  type="button"
+                  className="class-session-card"
+                  key={session._id}
+                  onClick={() => {
+                    setSelectedSeatNumbers([]);
+                    setSelectedId(session._id);
+                    setBookingStep("details");
+                  }}
+                  aria-label={`View details for ${session.title}`}
+                >
+                  <span className="class-session-top">
+                    <span className="eyebrow">CLASS SESSION</span>
+                    <span
+                      className={available ? "seat-count" : "seat-count full"}
+                    >
+                      {available ? `${available} seats left` : "Fully booked"}
+                    </span>
+                  </span>
+                  <span className="class-card-title">{session.title}</span>
+                  <span className="class-description">
+                    {session.description ||
+                      "Join this guided class and reserve your place."}
+                  </span>
+                  <span className="class-card-meta">
+                    <span>
+                      <UserRound size={16} /> {session.instructorName}
+                    </span>
+                    <span>
+                      <CalendarDays size={16} />
+                      {new Date(session.startsAt).toLocaleString([], {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })}
+                    </span>
+                  </span>
+                  <span className="class-card-cta">View session details →</span>
+                </button>
+              );
+            })}
+          </div>
+          {sessions.length > SESSIONS_PER_PAGE && (
+            <nav className="orders-pagination" aria-label="Sessions pagination">
               <button
                 type="button"
-                className="class-session-card"
-                key={session._id}
-                onClick={() => {
-                  setSelectedSeatNumbers([]);
-                  setSelectedId(session._id);
-                  setBookingStep("details");
-                }}
-                aria-label={`View details for ${session.title}`}
+                className="btn btn-outline"
+                onClick={() =>
+                  setSessionsPage((current) =>
+                    Math.max(1, Math.min(current, sessionsPageCount) - 1),
+                  )
+                }
+                disabled={currentSessionsPage <= 1}
               >
-                <span className="class-session-top">
-                  <span className="eyebrow">CLASS SESSION</span>
-                  <span
-                    className={available ? "seat-count" : "seat-count full"}
-                  >
-                    {available ? `${available} seats left` : "Fully booked"}
-                  </span>
-                </span>
-                <span className="class-card-title">{session.title}</span>
-                <span className="class-description">
-                  {session.description ||
-                    "Join this guided class and reserve your place."}
-                </span>
-                <span className="class-card-meta">
-                  <span>
-                    <UserRound size={16} /> {session.instructorName}
-                  </span>
-                  <span>
-                    <CalendarDays size={16} />
-                    {new Date(session.startsAt).toLocaleString([], {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
-                  </span>
-                </span>
-                <span className="class-card-cta">View session details →</span>
+                <ChevronLeft size={16} /> Previous
               </button>
-            );
-          })}
-        </div>
+              <span>
+                Page {currentSessionsPage} of {sessionsPageCount} ·{" "}
+                {sessions.length} sessions
+              </span>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() =>
+                  setSessionsPage((current) =>
+                    Math.min(sessionsPageCount, Math.min(current, sessionsPageCount) + 1),
+                  )
+                }
+                disabled={currentSessionsPage >= sessionsPageCount}
+              >
+                Next <ChevronRight size={16} />
+              </button>
+            </nav>
+          )}
+        </>
       )}
     </section>
   );

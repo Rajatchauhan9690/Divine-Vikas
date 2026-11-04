@@ -19,6 +19,7 @@ const seatSchema = new mongoose.Schema(
     paymentOrderId: { type: String, default: "" },
     paymentSessionId: { type: String, default: "" },
     paymentId: { type: String, default: "" },
+    slotStartsAt: { type: Date, default: null },
     emailNotification: {
       status: {
         type: String,
@@ -41,6 +42,18 @@ const classSessionSchema = new mongoose.Schema(
       required: true,
       trim: true,
       maxlength: 100,
+    },
+    bookingType: {
+      type: String,
+      enum: ["class", "time_slots"],
+      default: "class",
+      index: true,
+    },
+    owner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
     },
     price: { type: Number, min: 0, max: 1000000, default: 0 },
     startsAt: { type: Date, required: true },

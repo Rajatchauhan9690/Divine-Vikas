@@ -287,6 +287,8 @@ export default function CashfreeCustomCheckout({
         const status = await onPaymentComplete();
         if (status === "pending") {
           setPaymentMessage(pendingMessage);
+        } else if (status === "failed" || status === "expired") {
+          setPaymentMessage("Cashfree did not confirm the payment. Check the subscription page before trying again.");
         } else if (!status) {
           setPaymentMessage(unconfirmedMessage);
         }
@@ -298,6 +300,8 @@ export default function CashfreeCustomCheckout({
         const status = await onPaymentComplete();
         if (status === "pending") {
           setPaymentMessage(pendingMessage);
+        } else if (status === "failed" || status === "expired") {
+          setPaymentMessage("Cashfree did not confirm the payment. Check the subscription page before trying again.");
         } else if (!status) {
           setPaymentMessage(unconfirmedMessage);
         }

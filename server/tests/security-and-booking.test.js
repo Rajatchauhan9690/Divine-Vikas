@@ -27,6 +27,9 @@ let ProductPaymentAttempt;
 let RateLimitBucket;
 let ClassPaymentHold;
 let PasswordResetToken;
+let SubAdminInvitation;
+let SubAdminSubscriptionPayment;
+let SubAdminSubscriptionPricing;
 
 before(async () => {
   mongo = await MongoMemoryServer.create();
@@ -41,6 +44,9 @@ before(async () => {
   ({ default: RateLimitBucket } = await import('../src/models/RateLimitBucket.js'));
   ({ default: ClassPaymentHold } = await import('../src/models/ClassPaymentHold.js'));
   ({ default: PasswordResetToken } = await import('../src/models/PasswordResetToken.js'));
+  ({ default: SubAdminInvitation } = await import('../src/models/SubAdminInvitation.js'));
+  ({ default: SubAdminSubscriptionPayment } = await import('../src/models/SubAdminSubscriptionPayment.js'));
+  ({ default: SubAdminSubscriptionPricing } = await import('../src/models/SubAdminSubscriptionPricing.js'));
 });
 
 after(async () => {
@@ -59,6 +65,9 @@ beforeEach(async () => {
     RateLimitBucket.deleteMany({}),
     ClassPaymentHold.deleteMany({}),
     PasswordResetToken.deleteMany({}),
+    SubAdminInvitation.deleteMany({}),
+    SubAdminSubscriptionPayment.deleteMany({}),
+    SubAdminSubscriptionPricing.deleteMany({}),
   ]);
 });
 
@@ -172,6 +181,28 @@ test('refresh token rotation revokes the old token and creates a different activ
   assert.notEqual(replacementToken, originalToken);
   const replacementHash = (await import('../src/utils/tokens.js')).hashToken(replacementToken);
   assert.ok(await Session.findOne({ refreshHash: replacementHash, revokedAt: null }));
+});
+
+test('login does not revalidate unrelated legacy profile data', async () => {
+  const account = await registerUser('legacy-profile-login@example.com');
+  await User.collection.updateOne(
+    { _id: new mongoose.Types.ObjectId(account.user.id) },
+    {
+      $set: {
+        addresses: [{ fullName: '', phone: '' }],
+      },
+    },
+  );
+
+  await account.agent
+    .post('/api/auth/login')
+    .set('Origin', 'http://localhost:5173')
+    .set('X-CSRF-Token', account.csrfToken)
+    .send({
+      email: 'legacy-profile-login@example.com',
+      password: 'StrongPass123!',
+    })
+    .expect(200);
 });
 
 test('guest refresh attempts do not exhaust the login authentication limit', async () => {
@@ -390,9 +421,20 @@ test('five failed logins lock the account and correct password is rejected durin
       .set('X-Forwarded-For', '198.51.100.42')
       .send({ email: 'lockout@example.com', password });
   try {
-    for (let i = 0; i < 4; i++)
+    for (let i = 0; i < 4; i++) {
       await login('wrong-password').expect(401);
+      assert.equal(
+        (await User.findById(user.user.id).select('+failedLoginAttempts'))
+          .failedLoginAttempts,
+        i + 1,
+      );
+    }
     await login('wrong-password').expect(423);
+    const lockedUser = await User.findById(user.user.id).select(
+      '+failedLoginAttempts +lockUntil',
+    );
+    assert.equal(lockedUser.failedLoginAttempts, 5);
+    assert.ok(lockedUser.lockUntil > new Date());
     await login('StrongPass123!').expect(423);
   } finally {
     app.set('trust proxy', priorTrustProxy);
@@ -1085,7 +1127,7 @@ test('admin can price an existing upcoming class before any seat is reserved', a
   assert.equal((await ClassSession.findById(session._id)).price, 350);
 });
 
-test('admin can edit an upcoming class only before any seat is held or booked', async () => {
+test('admin can edit an upcoming class while preserving held and booked seats', async () => {
   const administrator = await registerUser('class-edit-admin@example.com');
   await User.updateOne({ _id: administrator.user.id }, { $set: { role: 'admin' } });
   const session = await ClassSession.create({
@@ -1119,7 +1161,17 @@ test('admin can edit an upcoming class only before any seat is held or booked', 
 
   await ClassSession.updateOne(
     { _id: session._id },
-    { $set: { 'seats.0.status': 'booked' } },
+    {
+      $set: {
+        'seats.0.status': 'booked',
+        'seats.0.bookedBy': administrator.user.id,
+        'seats.0.paymentOrderId': 'booked-order',
+        'seats.1.status': 'pending_payment',
+        'seats.1.bookedBy': administrator.user.id,
+        'seats.1.paymentOrderId': 'pending-order',
+        'seats.1.holdExpiresAt': new Date(Date.now() + 10 * 60 * 1000),
+      },
+    },
   );
   await request(app)
     .put(`/api/admin/classes/${session._id}`)
@@ -1133,6 +1185,34 @@ test('admin can edit an upcoming class only before any seat is held or booked', 
       seatCount: 1,
     })
     .expect(409);
+
+  const updatedWithBookings = await request(app)
+    .put(`/api/admin/classes/${session._id}`)
+    .set(headers)
+    .send({
+      title: 'Updated While Booked',
+      description: 'Existing seats remain intact',
+      instructorName: 'New Instructor',
+      startsAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
+      price: 425,
+      durationMinutes: 75,
+      seatCount: 3,
+    })
+    .expect(200);
+  assert.equal(updatedWithBookings.body.session.title, 'Updated While Booked');
+  assert.equal(updatedWithBookings.body.session.seats.length, 3);
+  const bookedSeat = updatedWithBookings.body.session.seats.find(
+    (seat) => seat.seatNumber === 'S01',
+  );
+  const heldSeat = updatedWithBookings.body.session.seats.find(
+    (seat) => seat.seatNumber === 'S02',
+  );
+  assert.equal(bookedSeat.status, 'booked');
+  assert.equal(bookedSeat.paymentOrderId, 'booked-order');
+  assert.equal(String(bookedSeat.bookedBy), administrator.user.id);
+  assert.equal(heldSeat.status, 'pending_payment');
+  assert.equal(heldSeat.paymentOrderId, 'pending-order');
+  assert.equal(String(heldSeat.bookedBy), administrator.user.id);
 });
 
 test('admin can edit product details without replacing its image', async () => {
@@ -2276,4 +2356,811 @@ test('expired unpaid product payment reservations restore inventory without crea
   assert.ok(recoveredOrder);
   assert.equal(recoveredOrder.paymentStatus, 'paid');
   assert.equal((await Product.findById(product._id)).stock, 0);
+});
+
+test('sub-admins manage only their own appointment services', async () => {
+  const first = await registerUser('service-manager@example.com');
+  const activeSubscription = {
+    planKey: 'starter',
+    planName: 'Starter',
+    amount: 499,
+    serviceLimit: 3,
+    sessionLimit: 2,
+    billingMode: 'manual',
+    status: 'active',
+    currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+  };
+  await User.updateOne(
+    { _id: first.user.id },
+    { $set: { role: 'sub_admin', subscription: activeSubscription } },
+  );
+  const startsAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  startsAt.setSeconds(0, 0);
+  startsAt.setMinutes(0);
+  const laterSlot = new Date(startsAt.getTime() + 60 * 60 * 1000);
+  const thirdSlot = new Date(startsAt.getTime() + 2 * 60 * 60 * 1000);
+  const payload = {
+    title: 'Personal astrology session',
+    description: 'Private appointment',
+    instructorName: 'Service Manager',
+    price: 500,
+    durationMinutes: 60,
+    slots: [startsAt.toISOString(), laterSlot.toISOString()],
+  };
+  await request(app)
+    .post('/api/admin/services')
+    .set('Authorization', 'Bearer ' + first.accessToken)
+    .send({ ...payload, slots: [...payload.slots, thirdSlot.toISOString()] })
+    .expect(403);
+  await User.updateOne(
+    { _id: first.user.id },
+    { $set: { 'subscription.serviceLimit': 1 } },
+  );
+  const created = await request(app)
+    .post('/api/admin/services')
+    .set('Authorization', `Bearer ${first.accessToken}`)
+    .send(payload)
+    .expect(201);
+  assert.equal(created.body.service.bookingType, 'time_slots');
+  assert.equal(String(created.body.service.owner), first.user.id);
+  assert.equal(created.body.service.seats.length, 2);
+  await request(app)
+    .post('/api/admin/services')
+    .set('Authorization', 'Bearer ' + first.accessToken)
+    .send({ ...payload, title: 'Second astrology session' })
+    .expect(403);
+
+  const publicServices = await request(app).get('/api/services').expect(200);
+  assert.equal(publicServices.body.services.length, 1);
+  assert.equal(publicServices.body.services[0].slots.length, 2);
+  const managerServices = await request(app)
+    .get('/api/services')
+    .set('Authorization', `Bearer ${first.accessToken}`)
+    .expect(200);
+  assert.equal(managerServices.body.services.length, 0);
+  const selfBooking = await request(app)
+    .post(`/api/services/${created.body.service._id}/slots/T001/payment`)
+    .set('Authorization', `Bearer ${first.accessToken}`)
+    .send({})
+    .expect(403);
+  assert.equal(selfBooking.body.code, 'CANNOT_BOOK_OWN_APPOINTMENT');
+  const publicClasses = await request(app).get('/api/classes').expect(200);
+  assert.equal(publicClasses.body.sessions.length, 0);
+
+  const second = await registerUser('other-manager@example.com');
+  await User.updateOne(
+    { _id: second.user.id },
+    { $set: { role: 'sub_admin', subscription: activeSubscription } },
+  );
+  const otherManagerServices = await request(app)
+    .get('/api/services')
+    .set('Authorization', `Bearer ${second.accessToken}`)
+    .expect(200);
+  assert.equal(otherManagerServices.body.services.length, 1);
+  const isolated = await request(app)
+    .get('/api/admin/services')
+    .set('Authorization', `Bearer ${second.accessToken}`)
+    .expect(200);
+  assert.equal(isolated.body.services.length, 0);
+  await request(app)
+    .get('/api/admin/products')
+    .set('Authorization', `Bearer ${second.accessToken}`)
+    .expect(403);
+  await request(app)
+    .get('/api/admin/classes')
+    .set('Authorization', `Bearer ${second.accessToken}`)
+    .expect(403);
+  await request(app)
+    .put(`/api/admin/services/${created.body.service._id}`)
+    .set('Authorization', `Bearer ${second.accessToken}`)
+    .send(payload)
+    .expect(404);
+
+  const expired = await registerUser('expired-manager@example.com');
+  await User.updateOne(
+    { _id: expired.user.id },
+    {
+      $set: {
+        role: 'sub_admin',
+        subscription: {
+          ...activeSubscription,
+          currentPeriodEnd: new Date(Date.now() - 1000),
+        },
+      },
+    },
+  );
+  await request(app)
+    .get('/api/admin/services')
+    .set('Authorization', 'Bearer ' + expired.accessToken)
+    .expect(402);
+});
+
+test('admin overview includes legacy class sessions and their bookings', async () => {
+  const admin = await registerUser('legacy-dashboard-admin@example.com');
+  await User.updateOne({ _id: admin.user.id }, { $set: { role: 'admin' } });
+
+  const startsAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  await ClassSession.collection.insertOne({
+    title: 'Legacy class session',
+    instructorName: 'Session Instructor',
+    price: 500,
+    startsAt,
+    durationMinutes: 60,
+    seats: [
+      { seatNumber: 'A1', status: 'booked' },
+      {
+        seatNumber: 'A2',
+        status: 'pending_payment',
+        holdExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
+    ],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  await ClassSession.create({
+    title: 'Sub-admin appointment',
+    instructorName: 'Service Provider',
+    bookingType: 'time_slots',
+    price: 500,
+    startsAt,
+    durationMinutes: 60,
+    seats: [{ seatNumber: 'T001', status: 'booked' }],
+  });
+
+  const response = await request(app)
+    .get('/api/admin/dashboard')
+    .set('Authorization', `Bearer ${admin.accessToken}`)
+    .expect(200);
+  assert.equal(response.body.metrics.classSessions, 1);
+  assert.equal(response.body.metrics.classBookings, 2);
+});
+
+test('admins can inspect a sub-admin account appointments and bookings', async () => {
+  const subAdmin = await registerUser('appointment-owner@example.com');
+  const admin = await registerUser('appointment-viewer@example.com');
+  const customer = await registerUser('appointment-customer@example.com');
+  await User.updateOne(
+    { _id: subAdmin.user.id },
+    {
+      $set: {
+        role: 'sub_admin',
+        subscription: {
+          planKey: 'monthly',
+          planName: 'Monthly',
+          amount: 499,
+          serviceLimit: 3,
+          sessionLimit: 10,
+          billingMode: 'manual',
+          status: 'active',
+          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        },
+      },
+    },
+  );
+  await User.updateOne({ _id: admin.user.id }, { $set: { role: 'admin' } });
+
+  const startsAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const service = await ClassSession.create({
+    title: 'Consultation appointment',
+    description: 'Personal consultation',
+    instructorName: 'Appointment Owner',
+    bookingType: 'time_slots',
+    owner: subAdmin.user.id,
+    price: 600,
+    startsAt,
+    durationMinutes: 45,
+    seats: [
+      {
+        seatNumber: 'T001',
+        slotStartsAt: startsAt,
+        status: 'booked',
+        bookedBy: customer.user.id,
+        bookedAt: new Date(),
+      },
+      {
+        seatNumber: 'T002',
+        slotStartsAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
+        status: 'available',
+      },
+    ],
+  });
+
+  const response = await request(app)
+    .get(`/api/admin/sub-admins/${subAdmin.user.id}/appointments`)
+    .set('Authorization', `Bearer ${admin.accessToken}`)
+    .expect(200);
+  assert.equal(response.body.services.length, 1);
+  assert.equal(String(response.body.services[0]._id), String(service._id));
+  assert.equal(response.body.services[0].title, 'Consultation appointment');
+  assert.equal(response.body.services[0].appointments[0].status, 'booked');
+  assert.equal(
+    response.body.services[0].appointments[0].customer.email,
+    'appointment-customer@example.com',
+  );
+  assert.equal(response.body.services[0].appointments[1].status, 'available');
+
+  await request(app)
+    .get(`/api/admin/sub-admins/${subAdmin.user.id}/appointments`)
+    .set('Authorization', `Bearer ${subAdmin.accessToken}`)
+    .expect(403);
+  await request(app)
+    .get('/api/admin/sub-admins/not-an-id/appointments')
+    .set('Authorization', `Bearer ${admin.accessToken}`)
+    .expect(400);
+});
+
+test('sub-admin appointment slots cannot extend beyond an active subscription', async () => {
+  const manager = await registerUser('plan-bound-manager@example.com');
+  const startsAt = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  startsAt.setMinutes(0, 0, 0);
+  const periodEnd = new Date(startsAt.getTime() + 60 * 60 * 1000);
+  await User.updateOne(
+    { _id: manager.user.id },
+    {
+      $set: {
+        role: 'sub_admin',
+        subscription: {
+          planKey: 'starter',
+          planName: 'Starter',
+          amount: 499,
+          serviceLimit: 3,
+          sessionLimit: 2,
+          billingMode: 'monthly',
+          status: 'active',
+          currentPeriodEnd: periodEnd,
+        },
+      },
+    },
+  );
+  const payload = {
+    title: 'Plan-bound appointment',
+    description: '',
+    instructorName: 'Plan Manager',
+    price: 500,
+    durationMinutes: 60,
+    slots: [startsAt.toISOString()],
+  };
+  const created = await request(app)
+    .post('/api/admin/services')
+    .set('Authorization', `Bearer ${manager.accessToken}`)
+    .send(payload)
+    .expect(201);
+
+  const afterPlanEnd = new Date(periodEnd.getTime() + 60 * 1000);
+  const invalidPayload = {
+    ...payload,
+    slots: [afterPlanEnd.toISOString()],
+  };
+  const createBeyondEnd = await request(app)
+    .post('/api/admin/services')
+    .set('Authorization', `Bearer ${manager.accessToken}`)
+    .send(invalidPayload)
+    .expect(403);
+  assert.equal(
+    createBeyondEnd.body.code,
+    'APPOINTMENT_AFTER_SUBSCRIPTION_END',
+  );
+  const updateBeyondEnd = await request(app)
+    .put(`/api/admin/services/${created.body.service._id}`)
+    .set('Authorization', `Bearer ${manager.accessToken}`)
+    .send(invalidPayload)
+    .expect(403);
+  assert.equal(
+    updateBeyondEnd.body.code,
+    'APPOINTMENT_AFTER_SUBSCRIPTION_END',
+  );
+
+  await User.updateOne(
+    { _id: manager.user.id },
+    { $set: { 'subscription.status': 'past_due' } },
+  );
+  await request(app)
+    .get('/api/admin/services')
+    .set('Authorization', `Bearer ${manager.accessToken}`)
+    .expect(402);
+  const publicServices = await request(app).get('/api/services').expect(200);
+  assert.equal(publicServices.body.services.length, 0);
+
+  const customer = await registerUser('plan-expiry-customer@example.com');
+  const bookingResponse = await request(app)
+    .post(
+      `/api/services/${created.body.service._id}/slots/T001/payment`,
+    )
+    .set('Authorization', `Bearer ${customer.accessToken}`)
+    .send({})
+    .expect(409);
+  assert.equal(bookingResponse.body.code, 'APPOINTMENT_PLAN_EXPIRED');
+});
+
+test('sub-admin invitations require a verified subscription payment before creating an account', async () => {
+  const token = crypto.randomBytes(32).toString('base64url');
+  const { hashToken } = await import('../src/utils/tokens.js');
+  const invitation = await SubAdminInvitation.create({
+    email: 'invited-manager@example.com',
+    name: 'Invited Manager',
+    invitedBy: new mongoose.Types.ObjectId(),
+    tokenHash: hashToken(token),
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+  });
+  const agent = request.agent(app);
+  const csrfToken = await getCsrf(agent);
+  const plans = await agent
+    .get('/api/auth/sub-admin-subscription/plans')
+    .expect(200);
+  assert.equal(plans.body.plans[0].key, 'monthly');
+  assert.equal(plans.body.plans[0].amount, 499);
+  assert.equal(plans.body.plans.length, 3);
+
+  const envKeys = ['CASHFREE_CLIENT_ID', 'CASHFREE_CLIENT_SECRET'];
+  const originalEnv = Object.fromEntries(
+    envKeys.map((key) => [key, process.env[key]]),
+  );
+  const originalFetch = globalThis.fetch;
+  process.env.CASHFREE_CLIENT_ID = 'test-client-id';
+  process.env.CASHFREE_CLIENT_SECRET = 'test-client-secret';
+  globalThis.fetch = async (url, options) => {
+    if (String(url).endsWith('/orders')) {
+      assert.equal(JSON.parse(options.body).order_amount, 499);
+      return new Response(JSON.stringify({
+        order_id: JSON.parse(options.body).order_id,
+        payment_session_id: 'test-payment-session',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (String(url).endsWith('/payments')) {
+      return new Response(JSON.stringify([{
+        payment_status: 'SUCCESS',
+        payment_amount: 499,
+        cf_payment_id: 'test-cf-payment',
+      }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    throw new Error(`Unexpected Cashfree request: ${url}`);
+  };
+
+  try {
+    const checkout = await agent
+      .post('/api/auth/sub-admin-invitation/checkout')
+    .set('Origin', 'http://localhost:5173')
+    .set('X-CSRF-Token', csrfToken)
+      .send({
+        token,
+        name: 'Invited Manager',
+        phone: '9876543210',
+        password: 'StrongPass123!',
+        planKey: 'monthly',
+        billingMode: 'manual',
+        amount: 1,
+      })
+      .expect(201);
+    assert.equal(checkout.body.amount, 499);
+    const resumedCheckout = await agent
+      .post('/api/auth/sub-admin-invitation/checkout')
+      .set('Origin', 'http://localhost:5173')
+      .set('X-CSRF-Token', csrfToken)
+      .send({
+        token,
+        name: 'Invited Manager',
+        phone: '9876543210',
+        password: 'StrongPass123!',
+        planKey: 'monthly',
+        billingMode: 'manual',
+      })
+      .expect(201);
+    assert.equal(resumedCheckout.body.reused, true);
+    assert.equal(resumedCheckout.body.attemptId, checkout.body.attemptId);
+    assert.equal(
+      resumedCheckout.body.payment.paymentSessionId,
+      checkout.body.payment.paymentSessionId,
+    );
+    const resumableAttempt = await agent
+      .get('/api/auth/sub-admin-invitation/attempt')
+      .query({ token })
+      .expect(200);
+    assert.equal(resumableAttempt.body.attempt._id, checkout.body.attemptId);
+    assert.equal(
+      resumableAttempt.body.attempt.paymentSessionId,
+      checkout.body.payment.paymentSessionId,
+    );
+    assert.equal(await User.countDocuments({ email: invitation.email }), 0);
+
+    const attempt = await SubAdminSubscriptionPayment.findById(
+      checkout.body.attemptId,
+    ).select('+passwordHash');
+    assert.notEqual(attempt.passwordHash, 'StrongPass123!');
+
+    const accepted = await agent
+      .post('/api/auth/sub-admin-invitation/verify')
+      .set('Origin', 'http://localhost:5173')
+      .set('X-CSRF-Token', csrfToken)
+      .send({ attemptId: checkout.body.attemptId, token })
+      .expect(200);
+    assert.equal(accepted.body.status, 'paid');
+    assert.equal(accepted.body.user.role, 'sub_admin');
+    assert.equal(accepted.body.user.email, invitation.email);
+    const activeSubAdmin = await User.findById(accepted.body.user.id);
+    assert.equal(activeSubAdmin.subscription.planKey, 'monthly');
+    assert.equal(activeSubAdmin.subscription.status, 'active');
+    assert.equal(activeSubAdmin.subscription.durationMonths, 1);
+    assert.equal(activeSubAdmin.subscription.sessionLimit, 100);
+    assert.ok(
+      (await SubAdminInvitation.findById(invitation._id)).consumedAt,
+    );
+    assert.equal(
+      await SubAdminSubscriptionPricing.countDocuments({
+        key: { $in: ['monthly', 'quarterly', 'yearly'] },
+      }),
+      3,
+    );
+
+    await agent
+      .post('/api/auth/sub-admin-invitation')
+      .set('Origin', 'http://localhost:5173')
+      .set('X-CSRF-Token', csrfToken)
+      .send({ token, name: 'Invited Manager', password: 'StrongPass123!' })
+      .expect(404);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const key of envKeys) {
+      if (originalEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = originalEnv[key];
+    }
+  }
+});
+
+test('admins can configure monthly, quarterly, and yearly sub-admin plan limits', async () => {
+  const administrator = await registerUser('plan-config-admin@example.com');
+  await User.updateOne(
+    { _id: administrator.user.id },
+    { $set: { role: 'admin' } },
+  );
+  const plans = await request(app)
+    .get('/api/admin/sub-admin-subscription-plans')
+    .set('Authorization', 'Bearer ' + administrator.accessToken)
+    .expect(200);
+  assert.deepEqual(
+    plans.body.plans.map((plan) => plan.key),
+    ['monthly', 'quarterly', 'yearly'],
+  );
+  const editedPlans = plans.body.plans.map((plan) =>
+    plan.key === 'quarterly'
+      ? { ...plan, amount: 2400, serviceLimit: 12, sessionLimit: 320 }
+      : {
+          ...plan,
+          amount: Number(plan.amount),
+          serviceLimit: Number(plan.serviceLimit),
+          sessionLimit: Number(plan.sessionLimit),
+        },
+  );
+  await request(app)
+    .put('/api/admin/sub-admin-subscription-plans')
+    .set('Authorization', 'Bearer ' + administrator.accessToken)
+    .send({ plans: editedPlans })
+    .expect(200);
+
+  const publicPlans = await request(app)
+    .get('/api/auth/sub-admin-subscription/plans')
+    .expect(200);
+  const quarterly = publicPlans.body.plans.find(
+    (plan) => plan.key === 'quarterly',
+  );
+  assert.equal(quarterly.amount, 2400);
+  assert.equal(quarterly.serviceLimit, 12);
+  assert.equal(quarterly.sessionLimit, 320);
+  assert.equal(quarterly.durationMonths, 3);
+  assert.equal(
+    publicPlans.body.plans.find((plan) => plan.key === 'yearly').intervalType,
+    'YEAR',
+  );
+  const { accountPeriodEnd } = await import(
+    '../src/services/subAdminSubscriptionService.js'
+  );
+  const periodStart = new Date('2025-01-31T12:00:00.000Z');
+  assert.equal(
+    accountPeriodEnd(periodStart, 3).toISOString(),
+    '2025-04-30T12:00:00.000Z',
+  );
+  assert.equal(
+    accountPeriodEnd(periodStart, 12).toISOString(),
+    '2026-01-31T12:00:00.000Z',
+  );
+});
+
+test('automatic sub-admin plans activate only after Cashfree mandate verification', async () => {
+  const token = crypto.randomBytes(32).toString('base64url');
+  const { hashToken } = await import('../src/utils/tokens.js');
+  const invitation = await SubAdminInvitation.create({
+    email: 'autopay-manager@example.com',
+    name: 'Auto Manager',
+    invitedBy: new mongoose.Types.ObjectId(),
+    tokenHash: hashToken(token),
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+  });
+  const agent = request.agent(app);
+  const csrfToken = await getCsrf(agent);
+  const envKeys = ['CASHFREE_CLIENT_ID', 'CASHFREE_CLIENT_SECRET'];
+  const originalEnv = Object.fromEntries(
+    envKeys.map((key) => [key, process.env[key]]),
+  );
+  const originalFetch = globalThis.fetch;
+  process.env.CASHFREE_CLIENT_ID = 'test-client-id';
+  process.env.CASHFREE_CLIENT_SECRET = 'test-client-secret';
+  globalThis.fetch = async (url, options) => {
+    if (String(url).endsWith('/subscriptions')) {
+      const body = JSON.parse(options.body);
+      assert.equal(options.headers['x-api-version'], '2025-01-01');
+      assert.equal(body.plan_details.plan_amount, 1299);
+      assert.equal(body.plan_details.plan_intervals, 3);
+      assert.equal(body.plan_details.plan_interval_type, 'MONTH');
+      return new Response(JSON.stringify({
+        subscription_id: body.subscription_id,
+        subscription_session_id: 'test-subscription-session',
+        subscription_status: 'INITIALIZED',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (String(url).endsWith('/subscriptions/pay')) {
+      const body = JSON.parse(options.body);
+      assert.equal(body.subscription_session_id, 'test-subscription-session');
+      assert.equal(body.payment_type, 'AUTH');
+      return new Response(JSON.stringify({
+        data: { url: 'https://cashfree.example/authorize' },
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (String(url).includes('/subscriptions/DVSA_')) {
+      return new Response(JSON.stringify({
+        subscription_status: 'ACTIVE',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    throw new Error(`Unexpected Cashfree request: ${url}`);
+  };
+
+  try {
+    const checkout = await agent
+      .post('/api/auth/sub-admin-invitation/checkout')
+      .set('Origin', 'http://localhost:5173')
+      .set('X-CSRF-Token', csrfToken)
+      .send({
+        token,
+        name: 'Auto Manager',
+        phone: '9876543210',
+        password: 'StrongPass123!',
+        planKey: 'quarterly',
+        billingMode: 'autopay',
+      })
+      .expect(201);
+    assert.equal(checkout.body.paymentUrl, 'https://cashfree.example/authorize');
+    assert.equal(await User.countDocuments({ email: invitation.email }), 0);
+
+    const attempt = await SubAdminSubscriptionPayment.findById(
+      checkout.body.attemptId,
+    );
+    const { processRecurringSubscriptionWebhook } = await import(
+      '../src/services/subAdminSubscriptionService.js'
+    );
+    await processRecurringSubscriptionWebhook({
+      data: {
+        subscription: { subscription_id: attempt.providerSubscriptionId },
+        payment: {
+          payment_status: 'SUCCESS',
+          payment_amount: 1299,
+          cf_payment_id: 'test-recurring-payment',
+        },
+      },
+    });
+
+    const accepted = await agent
+      .post('/api/auth/sub-admin-invitation/verify')
+      .set('Origin', 'http://localhost:5173')
+      .set('X-CSRF-Token', csrfToken)
+      .send({ attemptId: checkout.body.attemptId, token })
+      .expect(200);
+    assert.equal(accepted.body.status, 'paid');
+    const activeSubAdmin = await User.findById(accepted.body.user.id);
+    assert.equal(activeSubAdmin.subscription.billingMode, 'autopay');
+    assert.equal(activeSubAdmin.subscription.planKey, 'quarterly');
+    assert.equal(activeSubAdmin.subscription.durationMonths, 3);
+    assert.equal(activeSubAdmin.subscription.serviceLimit, 15);
+    assert.equal(activeSubAdmin.subscription.sessionLimit, 500);
+    assert.equal(activeSubAdmin.subscription.providerSubscriptionId.startsWith('DVSA_'), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const key of envKeys) {
+      if (originalEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = originalEnv[key];
+    }
+  }
+});
+
+test('cancelling an automatic sub-admin signup cancels Cashfree and rejects late charges', async () => {
+  const token = crypto.randomBytes(32).toString('base64url');
+  const { hashToken } = await import('../src/utils/tokens.js');
+  const invitation = await SubAdminInvitation.create({
+    email: 'cancelled-autopay@example.com',
+    name: 'Cancelled Manager',
+    invitedBy: new mongoose.Types.ObjectId(),
+    tokenHash: hashToken(token),
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+  });
+  const agent = request.agent(app);
+  const csrfToken = await getCsrf(agent);
+  const envKeys = ['CASHFREE_CLIENT_ID', 'CASHFREE_CLIENT_SECRET'];
+  const originalEnv = Object.fromEntries(
+    envKeys.map((key) => [key, process.env[key]]),
+  );
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  process.env.CASHFREE_CLIENT_ID = 'test-client-id';
+  process.env.CASHFREE_CLIENT_SECRET = 'test-client-secret';
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url: String(url), options });
+    if (String(url).endsWith('/subscriptions')) {
+      const body = JSON.parse(options.body);
+      return new Response(JSON.stringify({
+        subscription_id: body.subscription_id,
+        subscription_session_id: 'test-cancel-subscription-session',
+        subscription_status: 'INITIALIZED',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (String(url).endsWith('/subscriptions/pay')) {
+      return new Response(JSON.stringify({
+        data: { url: 'https://cashfree.example/cancel-authorize' },
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (/\/subscriptions\/DVSA_[^/]+$/.test(String(url))) {
+      return new Response(JSON.stringify({
+        subscription_status: 'INITIALIZED',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (String(url).endsWith('/manage')) {
+      assert.equal(JSON.parse(options.body).action, 'CANCEL');
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    throw new Error(`Unexpected Cashfree request: ${url}`);
+  };
+
+  try {
+    const checkout = await agent
+      .post('/api/auth/sub-admin-invitation/checkout')
+      .set('Origin', 'http://localhost:5173')
+      .set('X-CSRF-Token', csrfToken)
+      .send({
+        token,
+        name: 'Cancelled Manager',
+        phone: '9876543210',
+        password: 'StrongPass123!',
+        planKey: 'monthly',
+        billingMode: 'autopay',
+      })
+      .expect(201);
+
+    const cancelled = await agent
+      .post('/api/auth/sub-admin-invitation/cancel')
+      .set('Origin', 'http://localhost:5173')
+      .set('X-CSRF-Token', csrfToken)
+      .send({ token, attemptId: checkout.body.attemptId })
+      .expect(200);
+    assert.equal(cancelled.body.status, 'cancelled');
+    assert.ok(requests.some(({ url }) => url.endsWith('/manage')));
+
+    const { processRecurringSubscriptionWebhook } = await import(
+      '../src/services/subAdminSubscriptionService.js'
+    );
+    const attempt = await SubAdminSubscriptionPayment.findById(
+      checkout.body.attemptId,
+    );
+    await processRecurringSubscriptionWebhook({
+      data: {
+        subscription: { subscription_id: attempt.providerSubscriptionId },
+        payment: {
+          payment_status: 'SUCCESS',
+          payment_amount: 499,
+          cf_payment_id: 'late-cancelled-payment',
+        },
+      },
+    });
+    assert.equal(
+      (await SubAdminSubscriptionPayment.findById(attempt._id)).status,
+      'refund_required',
+    );
+    assert.equal(await User.countDocuments({ email: invitation.email }), 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const key of envKeys) {
+      if (originalEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = originalEnv[key];
+    }
+  }
+});
+
+test('admins can email a time-limited sub-admin invitation link', async () => {
+  const administrator = await registerUser('invitation-admin@example.com');
+  await User.updateOne(
+    { _id: administrator.user.id },
+    { $set: { role: 'admin' } },
+  );
+  const messages = [];
+  const smtp = await startSmtpCapture(messages);
+  const envKeys = [
+    'SMTP_HOST',
+    'SMTP_PORT',
+    'SMTP_SECURE',
+    'SMTP_USER',
+    'SMTP_PASSWORD',
+    'SMTP_FROM',
+  ];
+  const originalEnv = Object.fromEntries(
+    envKeys.map((key) => [key, process.env[key]]),
+  );
+  process.env.SMTP_HOST = '127.0.0.1';
+  process.env.SMTP_PORT = String(smtp.port);
+  process.env.SMTP_SECURE = 'false';
+  process.env.SMTP_USER = '';
+  process.env.SMTP_PASSWORD = '';
+  process.env.SMTP_FROM = 'Divine Vikas <support@divinevikas.test>';
+
+  try {
+    await request(app)
+      .post('/api/admin/sub-admin-invitations')
+      .set('Authorization', 'Bearer ' + administrator.accessToken)
+      .send({ name: 'New Manager', email: 'new-manager@example.com' })
+      .expect(201);
+    assert.match(messages[0], /Subject:.*invited/);
+    const message = messages[0]
+      .replace(/=\r\n/g, '')
+      .replace(/=3D/g, '=');
+    assert.match(message, /sub-admin-invitation\?token=/);
+    const active = await SubAdminInvitation.findOne({
+      email: 'new-manager@example.com',
+      consumedAt: null,
+    });
+    assert.ok(active);
+    const remainingMs = active.expiresAt.getTime() - Date.now();
+    assert.ok(remainingMs > 23 * 60 * 60 * 1000);
+    assert.ok(remainingMs <= 24 * 60 * 60 * 1000);
+    assert.match(message, /one-time link expires in 24 hours/i);
+  } finally {
+    await new Promise((resolve) => smtp.server.close(resolve));
+    for (const key of envKeys) {
+      if (originalEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = originalEnv[key];
+    }
+  }
+});
+
+test('admin accounts cannot use customer order, session, or appointment booking APIs', async () => {
+  const administrator = await registerUser('admin-customer-actions@example.com');
+  await User.updateOne(
+    { _id: administrator.user.id },
+    { $set: { role: 'admin' } },
+  );
+  const headers = {
+    Authorization: `Bearer ${administrator.accessToken}`,
+    Origin: 'http://localhost:5173',
+    'X-CSRF-Token': administrator.csrfToken,
+  };
+
+  await request(app)
+    .post('/api/orders')
+    .set(headers)
+    .send({})
+    .expect(403);
+  await request(app)
+    .get('/api/orders/mine')
+    .set('Authorization', headers.Authorization)
+    .expect(403);
+  await request(app)
+    .post('/api/classes/not-a-class-id/seats/payment')
+    .set(headers)
+    .send({ seatNumbers: ['S01'] })
+    .expect(403);
+  await request(app)
+    .post('/api/services/not-a-service-id/slots/S01/payment')
+    .set(headers)
+    .send({})
+    .expect(403);
+  await request(app)
+    .get('/api/admin/orders')
+    .set('Authorization', headers.Authorization)
+    .expect(200);
 });

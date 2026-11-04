@@ -42,6 +42,26 @@ export function AuthProvider({ children }) {
     setUser(data.user);
     return data.user;
   };
+  const completeSubAdminSubscription = async (attemptId, token) => {
+    const { data } = await api.post("/auth/sub-admin-invitation/verify", {
+      attemptId,
+      token,
+    });
+    if (data.status !== "paid") return data.status;
+    setAccessToken(data.accessToken);
+    setUser(data.user);
+    return "paid";
+  };
+  const cancelSubAdminSubscriptionSignup = async (attemptId, token) => {
+    const { data } = await api.post("/auth/sub-admin-invitation/cancel", {
+      attemptId,
+      token,
+    });
+    if (data.status !== "paid") return data.status;
+    setAccessToken(data.accessToken);
+    setUser(data.user);
+    return "paid";
+  };
   const logout = async () => {
     try {
       await api.post("/auth/logout");
@@ -57,7 +77,16 @@ export function AuthProvider({ children }) {
   };
   return (
     <Ctx.Provider
-      value={{ user, ready, login, register, logout, logoutAll }}
+      value={{
+        user,
+        ready,
+        login,
+        register,
+        completeSubAdminSubscription,
+        cancelSubAdminSubscriptionSignup,
+        logout,
+        logoutAll,
+      }}
     >
       {children}
     </Ctx.Provider>

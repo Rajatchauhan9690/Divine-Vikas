@@ -294,7 +294,7 @@ export default function AdminOrders() {
           ))}
         </div>
       )}
-      {pagination.total > 0 && (
+      {!selectedOrderId && pagination.total > 0 && (
         <div className="admin-pagination">
           <button
             className="btn btn-outline"

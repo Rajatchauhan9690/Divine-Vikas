@@ -19,9 +19,41 @@ import {
   passwordResetVerificationLimiter,
 } from "../middleware/rateLimits.js";
 import { csrfProtection } from "../middleware/csrf.js";
+import {
+  cancelSubAdminInvitationCheckout,
+  createSubAdminSubscriptionCheckout,
+  getSubAdminSubscriptionPlans,
+  inspectSubAdminInvitation,
+  inspectSubAdminSubscriptionAttempt,
+  verifySubAdminInvitationCheckout,
+} from "../controllers/subAdminInvitationController.js";
 const router = Router();
 router.get("/csrf", csrf);
 router.post("/register", authLimiter, csrfProtection, register);
+router.get("/sub-admin-invitation", inspectSubAdminInvitation);
+router.get(
+  "/sub-admin-invitation/attempt",
+  inspectSubAdminSubscriptionAttempt,
+);
+router.get("/sub-admin-subscription/plans", getSubAdminSubscriptionPlans);
+router.post(
+  "/sub-admin-invitation/checkout",
+  authLimiter,
+  csrfProtection,
+  createSubAdminSubscriptionCheckout,
+);
+router.post(
+  "/sub-admin-invitation/verify",
+  authLimiter,
+  csrfProtection,
+  verifySubAdminInvitationCheckout,
+);
+router.post(
+  "/sub-admin-invitation/cancel",
+  authLimiter,
+  csrfProtection,
+  cancelSubAdminInvitationCheckout,
+);
 router.post("/login", authLimiter, loginLimiter, csrfProtection, login);
 router.post("/refresh", csrfProtection, refreshLimiter, refresh);
 router.post(

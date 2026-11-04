@@ -18,6 +18,9 @@ import {
   shiprocketWebhook,
 } from "./controllers/orderController.js";
 import classSessionRoutes from "./routes/classSessionRoutes.js";
+import serviceRoutes from "./routes/serviceRoutes.js";
+import subAdminSubscriptionRoutes from "./routes/subAdminSubscriptionRoutes.js";
+import { subAdminSubscriptionWebhook } from "./controllers/subAdminSubscriptionController.js";
 import { notFound, errorHandler } from "./middleware/errors.js";
 const app = express();
 app.disable("x-powered-by");
@@ -44,7 +47,7 @@ app.use(
 );
 app.use(
   cors({
-    origin: env.clientOrigin,
+    origin: env.clientOrigins,
     credentials: true,
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: [
@@ -60,6 +63,11 @@ app.post(
   "/api/orders/cashfree/webhook",
   express.raw({ type: "application/json", limit: "100kb" }),
   cashfreeWebhook,
+);
+app.post(
+  "/api/sub-admin-subscriptions/cashfree/webhook",
+  express.raw({ type: "application/json", limit: "100kb" }),
+  subAdminSubscriptionWebhook,
 );
 app.use(express.json({ limit: "20kb" }));
 app.use(express.urlencoded({ extended: false, limit: "20kb" }));
@@ -88,6 +96,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/classes", classSessionRoutes);
+app.use("/api/services", serviceRoutes);
+app.use("/api/sub-admin-subscriptions", subAdminSubscriptionRoutes);
 app.use(notFound);
 app.use(errorHandler);
 export default app;

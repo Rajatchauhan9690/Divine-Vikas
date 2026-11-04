@@ -7,7 +7,6 @@ import {
   Flower2,
   House,
   Store,
-  CalendarDays,
   ShieldCheck,
   Package,
   LogOut,
@@ -25,6 +24,7 @@ export default function Layout() {
     pathname === "/login" ||
     pathname === "/register" ||
     pathname === "/password-reset";
+  const isInvitationPage = pathname === "/sub-admin-invitation";
   const hideFooterOnMobile =
     pathname === "/shop" ||
     pathname === "/classes" ||
@@ -41,9 +41,11 @@ export default function Layout() {
     return () => window.cancelAnimationFrame(frame);
   }, [hash, pathname]);
   const closeMenu = () => setOpen(false);
+  const isSubAdmin = user?.role === "sub_admin";
+  const isAdmin = user?.role === "admin";
   return (
     <>
-      {!isAuthPage && (
+      {!isAuthPage && !isInvitationPage && (
         <header className="site-header">
           <Link to="/" className="brand" onClick={closeMenu}>
             <span className="brand-mark">
@@ -57,54 +59,80 @@ export default function Layout() {
             className="mobile-menu"
             onClick={() => setOpen(!open)}
             aria-label="Toggle navigation"
+            aria-controls="site-navigation"
+            aria-expanded={open}
           >
             {open ? <X /> : <Menu />}
           </button>
-          <nav className={open ? "nav open" : "nav"}>
+          <nav id="site-navigation" className={open ? "nav open" : "nav"}>
             <NavLink to="/" onClick={closeMenu}>
               <House size={16} /> Home
             </NavLink>
-            <NavLink to="/shop" onClick={closeMenu}>
-              <Store size={16} /> Shop
-            </NavLink>
-
-            <NavLink to="/classes" onClick={closeMenu}>
-              <CalendarDays size={16} /> Sessions
-            </NavLink>
-
-            {user?.role === "admin" && (
-              <NavLink to="/admin" onClick={closeMenu}>
-                <ShieldCheck size={16} /> Admin
-              </NavLink>
+            {isSubAdmin ? (
+              <>
+                <NavLink to="/admin" onClick={closeMenu}>
+                  <ShieldCheck size={16} /> Subadmin
+                </NavLink>
+                <NavLink to="/shop" onClick={closeMenu}>
+                  <Store size={16} /> Shop
+                </NavLink>
+                <NavLink to="/cart" className="cart-link" onClick={closeMenu}>
+                  <ShoppingBag size={16} /> Cart
+                  {count > 0 && (
+                    <span className="cart-count" aria-label={`${count} items`}>
+                      {count}
+                    </span>
+                  )}
+                </NavLink>
+              </>
+            ) : (
+              <>
+                {!isAdmin && (
+                  <NavLink to="/shop" onClick={closeMenu}>
+                    <Store size={16} /> Shop
+                  </NavLink>
+                )}
+                {(user?.role === "admin") && (
+                  <NavLink to="/admin" onClick={closeMenu}>
+                    <ShieldCheck size={16} /> Admin
+                  </NavLink>
+                )}
+                {!isAdmin && (
+                  <NavLink to="/cart" className="cart-link" onClick={closeMenu}>
+                    <ShoppingBag size={16} /> Cart
+                    {count > 0 && (
+                      <span className="cart-count" aria-label={`${count} items`}>
+                        {count}
+                      </span>
+                    )}
+                  </NavLink>
+                )}
+              </>
             )}
-            <NavLink to="/cart" className="cart-link" onClick={closeMenu}>
-              <ShoppingBag size={16} /> Cart
-              {count > 0 && (
-                <span className="cart-count" aria-label={`${count} items`}>
-                  {count}
-                </span>
-              )}
-            </NavLink>
             {user && (
               <>
-                <NavLink to="/orders" onClick={closeMenu}>
-                  <Package size={16} /> My orders
-                </NavLink>
+                {!isSubAdmin && !isAdmin && (
+                  <NavLink to="/orders" onClick={closeMenu}>
+                    <Package size={16} /> My orders
+                  </NavLink>
+                )}
                 <NavLink to="/profile" onClick={closeMenu}>
                   <UserRound size={16} /> Profile
                 </NavLink>
-                <NavLink
-                  to="/support"
-                  className="mobile-support-link"
-                  onClick={closeMenu}
-                >
-                  <MessageCircle size={16} /> Contact support
-                </NavLink>
+                {!isSubAdmin && (
+                  <NavLink
+                    to="/support"
+                    className="mobile-support-link"
+                    onClick={closeMenu}
+                  >
+                    <MessageCircle size={16} /> Contact support
+                  </NavLink>
+                )}
                 <button
-                  className="nav-text"
+                  className="nav-text nav-signout"
                   onClick={() => {
                     closeMenu();
-                    logout();
+                    void logout();
                   }}
                 >
                   <LogOut size={16} /> Sign out
@@ -136,7 +164,7 @@ export default function Layout() {
           <Outlet />
         </div>
       </main>
-      {!isAuthPage && (
+      {!isAuthPage && !isInvitationPage && (
         <footer
           className={`footer${hideFooterOnMobile ? " mobile-hidden-footer" : ""}`}
         >
@@ -147,7 +175,9 @@ export default function Layout() {
             </span>
           </div>
           <p>Luxury is a feeling. Devotion is the fragrance.</p>
-          <Link to="/support">Customer support</Link>
+          {!isSubAdmin && !isAdmin && <Link to="/classes">Sessions</Link>}
+          {!isAdmin && !isSubAdmin && <Link to="/services">Appointments</Link>}
+          {!isAdmin && <Link to="/support">Customer support</Link>}
           <span>© {new Date().getFullYear()} Divine Vikas</span>
         </footer>
       )}
