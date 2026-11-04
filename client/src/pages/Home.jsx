@@ -1,10 +1,22 @@
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Leaf, Heart, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  ArrowUpRight,
+  CalendarDays,
+  Clock3,
+  Leaf,
+  Heart,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../services/api";
+import { useAuth } from "../features/auth/AuthContext";
 import ProductCard from "../components/ProductCard";
 export default function Home() {
+  const { user } = useAuth();
   const [products, setProducts] = useState([]);
+  const isSubAdmin = user?.role === "sub_admin";
+  const isAdmin = user?.role === "admin";
   useEffect(() => {
     api
       .get("/products")
@@ -27,9 +39,11 @@ export default function Home() {
             quality. Find a fragrance that feels like you.
           </p>
           <div className="hero-actions">
-            <Link className="btn btn-dark" to="/shop">
-              Explore fragrances <ArrowUpRight size={17} />
-            </Link>
+            {!isAdmin && (
+              <Link className="btn btn-dark" to="/shop">
+                Explore fragrances <ArrowUpRight size={17} />
+              </Link>
+            )}
             <a className="text-link" href="#story">
               Our philosophy
             </a>
@@ -63,6 +77,39 @@ export default function Home() {
           </div>
         </div>
       </section>
+      {!isAdmin && !isSubAdmin && (
+        <section className="home-booking-links section">
+        <div className="home-booking-heading">
+          <span className="eyebrow">MAKE TIME FOR YOURSELF</span>
+          <h2>
+            Find your <em>next moment.</em>
+          </h2>
+          <p>Choose an appointment or session at a time that works for you.</p>
+        </div>
+        <div className="home-booking-actions">
+          <Link className="home-booking-card" to="/classes">
+            <span className="home-booking-icon">
+              <CalendarDays size={21} />
+            </span>
+            <span className="home-booking-card-copy">
+              <strong>Book a session</strong>
+              <small>Explore upcoming classes and sessions</small>
+            </span>
+            <ArrowUpRight size={20} aria-hidden="true" />
+          </Link>
+          <Link className="home-booking-card" to="/services">
+            <span className="home-booking-icon">
+              <Clock3 size={21} />
+            </span>
+            <span className="home-booking-card-copy">
+              <strong>Book an appointment</strong>
+              <small>Choose a time for a personal visit</small>
+            </span>
+            <ArrowUpRight size={20} aria-hidden="true" />
+          </Link>
+        </div>
+        </section>
+      )}
       <section className="promise-strip">
         <div>
           <span className="promise-icon">
@@ -109,9 +156,11 @@ export default function Home() {
               Find your <em>signature.</em>
             </h2>
           </div>
-          <Link className="text-link" to="/shop">
-            Shop all fragrances <ArrowUpRight size={16} />
-          </Link>
+          {!isAdmin && (
+            <Link className="text-link" to="/shop">
+              Shop all fragrances <ArrowUpRight size={16} />
+            </Link>
+          )}
         </div>
         {products.length ? (
           <div className="product-grid">
@@ -127,9 +176,11 @@ export default function Home() {
               Our collection will appear here once products are added to the
               database.
             </p>
-            <Link className="btn btn-outline" to="/shop">
-              Explore the shop
-            </Link>
+            {!isAdmin && (
+              <Link className="btn btn-outline" to="/shop">
+                Explore the shop
+              </Link>
+            )}
           </div>
         )}
       </section>

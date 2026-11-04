@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Flower2, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../features/auth/AuthContext";
 export default function Auth({ mode = "login" }) {
@@ -10,6 +10,7 @@ export default function Auth({ mode = "login" }) {
     [busy, setBusy] = useState(false);
   const { login, register } = useAuth();
   const nav = useNavigate();
+  const location = useLocation();
   const update = (e) => setForm({ ...form, [e.target.name]: e.target.value });
   async function submit(e) {
     e.preventDefault();
@@ -19,7 +20,21 @@ export default function Auth({ mode = "login" }) {
       const u = isLogin
         ? await login({ email: form.email, password: form.password })
         : await register(form);
-      nav(u.role === "admin" ? "/admin" : "/shop");
+      const returnTo = location.state?.from;
+      const destination =
+        typeof returnTo === "string"
+          ? returnTo
+          : returnTo?.pathname
+            ? `${returnTo.pathname}${returnTo.search || ""}${returnTo.hash || ""}`
+            : null;
+      nav(
+        u.role === "admin"
+          ? "/admin"
+          : u.role === "sub_admin"
+            ? "/admin/services"
+            : destination ||
+                (location.state?.from === "/cart" ? "/cart" : "/shop"),
+      );
     } catch (err) {
       setError(
         err.response?.data?.message ||
@@ -30,22 +45,7 @@ export default function Auth({ mode = "login" }) {
     }
   }
   return (
-    <section className={`auth-page ${isLogin ? "auth-login" : "auth-register"}`}>
-      <div className="auth-art">
-        <img
-          src="https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?w=1000&q=80"
-          alt="Perfume and flowers"
-        />
-        <div>
-          <span className="eyebrow">A MOMENT JUST FOR YOU</span>
-          <h2>
-            Make room for
-            <br />
-            <em>beautiful rituals.</em>
-          </h2>
-        </div>
-      </div>
-      <div className="auth-form-wrap">
+    <div className="auth-form-wrap">
         <div className="auth-topbar">
           <div className="auth-brand">
             <Flower2 />
@@ -56,9 +56,7 @@ export default function Auth({ mode = "login" }) {
             Back to home
           </Link>
         </div>
-        <span className="eyebrow">
-          WELCOME {isLogin ? "BACK" : "TO OUR WORLD"}
-        </span>
+        {isLogin && <span className="eyebrow">WELCOME BACK</span>}
         <h1>{isLogin ? "Good to see you." : "Create your account."}</h1>
         <p>
           {isLogin
@@ -119,16 +117,23 @@ export default function Auth({ mode = "login" }) {
             {busy ? "Please wait…" : isLogin ? "Sign in" : "Create account"}
           </button>
         </form>
+        {isLogin && (
+          <p className="auth-switch">
+            <Link to="/password-reset">Forgot password?</Link>
+          </p>
+        )}
         <p className="auth-switch">
           {isLogin ? "New to Divine Vikas? " : "Already have an account? "}
-          <Link to={isLogin ? "/register" : "/login"}>
+          <Link
+            to={isLogin ? "/register" : "/login"}
+            state={location.state}
+          >
             {isLogin ? "Create an account" : "Sign in"}
           </Link>
         </p>
         <small className="auth-note">
           Your account is protected with secure session-based authentication.
         </small>
-      </div>
-    </section>
+    </div>
   );
 }

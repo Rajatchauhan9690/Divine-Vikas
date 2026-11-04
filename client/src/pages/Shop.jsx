@@ -9,27 +9,31 @@ export default function Shop() {
     [loading, setLoading] = useState(true),
     [error, setError] = useState("");
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
     const timer = setTimeout(() => {
       setLoading(true);
+      setError("");
       api
         .get("/products", {
           params: { search, category: category === "All" ? "" : category },
+          signal: controller.signal,
         })
         .then((r) => {
-          if (active) setProducts(r.data.products || []);
+          setProducts(r.data.products || []);
         })
         .catch(() => {
-          if (active)
+          if (!controller.signal.aborted)
             setError(
               "Could not load products. Check that the API server is running.",
             );
         })
-        .finally(() => active && setLoading(false));
-    }, 250);
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
+    }, 300);
     return () => {
-      active = false;
       clearTimeout(timer);
+      controller.abort();
     };
   }, [search, category]);
   return (
@@ -57,6 +61,7 @@ export default function Shop() {
             <button
               key={c}
               className={category === c ? "active" : ""}
+              aria-pressed={category === c}
               onClick={() => setCategory(c)}
             >
               {c}

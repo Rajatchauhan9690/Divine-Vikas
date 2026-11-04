@@ -1,32 +1,402 @@
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import User from "../models/User.js";
+import ClassSession from "../models/ClassSession.js";
+import SubAdminInvitation from "../models/SubAdminInvitation.js";
+import AppError from "../utils/AppError.js";
+import mongoose from "mongoose";
+import {
+  assignShiprocketCourier,
+  createShiprocketOrder,
+  generateShiprocketLabel,
+  getShiprocketCouriers,
+} from "../services/shiprocketService.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 export const dashboard = asyncHandler(async (req, res) => {
-  const [products, orders, users, revenue] = await Promise.all([
-    Product.countDocuments({ active: true }),
-    Order.countDocuments(),
-    User.countDocuments({ role: "customer" }),
+  const { from, to } = req.query;
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  function parseDate(value, label) {
+    if (!value) return null;
+    if (typeof value !== "string" || !datePattern.test(value))
+      throw new AppError(`Invalid ${label} date.`, 400, "INVALID_DATE_RANGE");
+    const date = new Date(`${value}T00:00:00.000Z`);
+    if (
+      Number.isNaN(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== value
+    )
+      throw new AppError(`Invalid ${label} date.`, 400, "INVALID_DATE_RANGE");
+    return date;
+  }
+  const rangeStart = parseDate(from, "start");
+  const rangeEndDate = parseDate(to, "end");
+  if (rangeStart && rangeEndDate && rangeStart > rangeEndDate)
+    throw new AppError(
+      "The start date must be on or before the end date.",
+      400,
+      "INVALID_DATE_RANGE",
+    );
+  const rangeEnd = rangeEndDate
+    ? new Date(rangeEndDate.getTime() + 24 * 60 * 60 * 1000)
+    : null;
+  const rangeMatch = (field) => {
+    if (!rangeStart && !rangeEnd) return {};
+    return {
+      [field]: {
+        ...(rangeStart ? { $gte: rangeStart } : {}),
+        ...(rangeEnd ? { $lt: rangeEnd } : {}),
+      },
+    };
+  };
+  const now = new Date();
+  const [
+    products,
+    orders,
+    users,
+    revenue,
+    classSessions,
+    classBookings,
+    serviceBookings,
+    activeSubAdmins,
+    pendingInvitations,
+  ] = await Promise.all([
+    Product.countDocuments({ active: true, ...rangeMatch("createdAt") }),
+    Order.countDocuments(rangeMatch("createdAt")),
+    User.countDocuments({ role: "customer", ...rangeMatch("createdAt") }),
     Order.aggregate([
-      { $match: { status: { $ne: "cancelled" } } },
+      {
+        $match: {
+          status: { $ne: "cancelled" },
+          ...rangeMatch("createdAt"),
+        },
+      },
       { $group: { _id: null, total: { $sum: "$total" } } },
     ]),
+    ClassSession.countDocuments({
+      bookingType: { $in: ["class", null] },
+      ...rangeMatch("startsAt"),
+    }),
+    ClassSession.aggregate([
+      {
+        $match: {
+          bookingType: { $in: ["class", null] },
+          ...rangeMatch("startsAt"),
+        },
+      },
+      {
+        $project: {
+          seats: {
+            $filter: {
+              input: { $ifNull: ["$seats", []] },
+              as: "seat",
+              cond: {
+                $or: [
+                  { $eq: ["$$seat.status", "booked"] },
+                  {
+                    $and: [
+                      { $eq: ["$$seat.status", "pending_payment"] },
+                      { $gt: ["$$seat.holdExpiresAt", now] },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+      { $unwind: "$seats" },
+      { $count: "total" },
+    ]),
+    ClassSession.aggregate([
+      { $match: { bookingType: "time_slots" } },
+      {
+        $project: {
+          seats: {
+            $filter: {
+              input: { $ifNull: ["$seats", []] },
+              as: "seat",
+              cond: {
+                $and: [
+                  {
+                    $or: [
+                      { $eq: ["$$seat.status", "booked"] },
+                      {
+                        $and: [
+                          { $eq: ["$$seat.status", "pending_payment"] },
+                          { $gt: ["$$seat.holdExpiresAt", now] },
+                        ],
+                      },
+                    ],
+                  },
+                  ...(rangeStart
+                    ? [{ $gte: ["$$seat.slotStartsAt", rangeStart] }]
+                    : []),
+                  ...(rangeEnd
+                    ? [{ $lt: ["$$seat.slotStartsAt", rangeEnd] }]
+                    : []),
+                ],
+              },
+            },
+          },
+        },
+      },
+      { $unwind: "$seats" },
+      { $count: "total" },
+    ]),
+    User.countDocuments({
+      role: "sub_admin",
+      active: true,
+      ...rangeMatch("createdAt"),
+    }),
+    SubAdminInvitation.countDocuments({
+      consumedAt: null,
+      expiresAt: { $gt: now },
+      ...rangeMatch("createdAt"),
+    }),
   ]);
-  const productList = await Product.find({ active: true })
-    .sort({ createdAt: -1 })
-    .limit(100)
-    .lean();
-  const recentOrders = await Order.find()
-    .sort({ createdAt: -1 })
-    .limit(10)
-    .populate("user", "name email")
-    .lean();
   res.json({
     success: true,
-    products: productList,
-    orders: recentOrders,
     users,
     revenue: revenue[0]?.total || 0,
-    metrics: { products, orders, users },
+    metrics: {
+      products,
+      orders,
+      users,
+      classSessions,
+      classBookings: classBookings[0]?.total || 0,
+      serviceBookings: serviceBookings[0]?.total || 0,
+      activeSubAdmins,
+      pendingInvitations,
+    },
   });
+});
+
+function pagination(query) {
+  const requestedPage = Number.parseInt(query.page, 10);
+  const requestedLimit = Number.parseInt(query.limit, 10);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), 50)
+    : 20;
+  const page = Number.isFinite(requestedPage)
+    ? Math.max(requestedPage, 1)
+    : 1;
+  return { page, limit, skip: (page - 1) * limit };
+}
+
+export const listAdminProducts = asyncHandler(async (req, res) => {
+  const { page, limit, skip } = pagination(req.query);
+  const filter = { active: true };
+  const search = String(req.query.search || "").trim().slice(0, 100);
+  if (search) {
+    const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    filter.$or = ["name", "shortDescription", "description"].map((field) => ({
+      [field]: { $regex: escapedSearch, $options: "i" },
+    }));
+  }
+  const [products, total] = await Promise.all([
+    Product.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    Product.countDocuments(filter),
+  ]);
+  res.json({
+    success: true,
+    products,
+    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+  });
+});
+
+export const listAdminOrders = asyncHandler(async (req, res) => {
+  const { page, limit, skip } = pagination(req.query);
+  const search = String(req.query.search || "").trim().slice(0, 100);
+  const filter = {};
+  const searchFilter = {};
+  const status = String(req.query.status || "");
+  const orderStatuses = [
+    "pending",
+    "paid",
+    "processing",
+    "shipped",
+    "delivered",
+    "cancelled",
+  ];
+  if (status) {
+    if (!orderStatuses.includes(status))
+      throw new AppError("Invalid order status filter", 400, "INVALID_ORDER_STATUS");
+    filter.status = status;
+  }
+  if (search) {
+    const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const matchingUsers = await User.find({
+      name: { $regex: escapedSearch, $options: "i" },
+    })
+      .select("_id")
+      .lean();
+    const conditions = [{ user: { $in: matchingUsers.map((user) => user._id) } }];
+    if (/^\d+(?:\.\d*)?$/.test(search))
+      conditions.push({
+        $expr: {
+          $regexMatch: {
+            input: { $toString: "$total" },
+            regex: escapedSearch,
+          },
+        },
+      });
+    if (search.length >= 3 && /^[a-f\d]+$/i.test(search))
+      conditions.push({
+        $expr: {
+          $regexMatch: {
+            input: { $toString: "$_id" },
+            regex: escapedSearch,
+            options: "i",
+          },
+        },
+      });
+    searchFilter.$or = conditions;
+  }
+  Object.assign(filter, searchFilter);
+  const [orders, total, totalOrders] = await Promise.all([
+    Order.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("user", "name email")
+      .populate("statusHistory.by", "name role")
+      .populate("returnRequest.reviewedBy", "name role")
+      .lean(),
+    Order.countDocuments(filter),
+    Order.countDocuments(searchFilter),
+  ]);
+  res.json({
+    success: true,
+    orders,
+    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    totalOrders,
+  });
+});
+
+function packageDetails(input) {
+  const details = {
+    weight: Number(input.weight),
+    length: Number(input.length),
+    breadth: Number(input.breadth),
+    height: Number(input.height),
+  };
+  if (
+    Object.values(details).some((value) => !Number.isFinite(value) || value <= 0)
+  )
+    throw new AppError(
+      "Enter positive package weight, length, breadth, and height",
+      400,
+      "INVALID_PACKAGE_DETAILS",
+    );
+  return details;
+}
+
+export const listOrderCouriers = asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.orderId))
+    throw new AppError("Invalid order ID", 400, "INVALID_ORDER_ID");
+  const order = await Order.findById(req.params.orderId).select(
+    "shippingAddress total status paymentStatus cancellationProcessing",
+  );
+  if (!order) throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
+  if (
+    !["paid", "processing"].includes(order.status) ||
+    order.paymentStatus !== "paid" ||
+    order.cancellationProcessing
+  )
+    throw new AppError(
+      "Only paid orders can be shipped",
+      409,
+      "ORDER_NOT_READY_TO_SHIP",
+    );
+  const packageData = packageDetails(req.query);
+  const couriers = await getShiprocketCouriers({
+    deliveryPostalCode: order.shippingAddress.postalCode,
+    weight: packageData.weight,
+    declaredValue: order.total,
+  });
+  res.json({
+    success: true,
+    couriers: couriers.map((courier) => ({
+      id: courier.courier_company_id,
+      name: courier.courier_name,
+      rate: courier.rate,
+      estimatedDays: courier.estimated_delivery_days,
+    })),
+  });
+});
+
+export const createOrderShipment = asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.orderId))
+    throw new AppError("Invalid order ID", 400, "INVALID_ORDER_ID");
+  const order = await Order.findById(req.params.orderId).populate("user", "email");
+  if (!order) throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
+  if (
+    !["paid", "processing"].includes(order.status) ||
+    order.paymentStatus !== "paid" ||
+    order.cancellationProcessing
+  )
+    throw new AppError(
+      "Only paid orders can be shipped",
+      409,
+      "ORDER_NOT_READY_TO_SHIP",
+    );
+  const packageData = packageDetails(req.body);
+  const courierId = Number(req.body.courierId);
+  if (!Number.isInteger(courierId) || courierId < 1)
+    throw new AppError("Choose an available courier", 400, "INVALID_COURIER");
+
+  order.shipping ||= {};
+  order.tracking ||= {};
+  if (!order.shipping.shiprocketOrderId) {
+    const created = await createShiprocketOrder(order, packageData);
+    const shipmentId = created.shipment_id || created.shipments?.[0]?.id;
+    if (!created.order_id || !shipmentId)
+      throw new AppError(
+        "Shiprocket created no shipment details",
+        502,
+        "SHIPROCKET_INVALID_RESPONSE",
+      );
+    order.shipping.shiprocketOrderId = String(created.order_id);
+    order.shipping.shipmentId = String(shipmentId);
+    order.shipping.package = packageData;
+    await order.save();
+  }
+  order.shipping.package = packageData;
+
+  if (!order.tracking?.trackingNumber) {
+    const awb = await assignShiprocketCourier(
+      order.shipping.shipmentId,
+      courierId,
+    );
+    const assigned = awb.response?.data || awb;
+    if (!assigned.awb_code)
+      throw new AppError(
+        assigned.message || "Shiprocket did not assign an AWB",
+        502,
+        "SHIPROCKET_AWB_FAILED",
+      );
+    order.tracking.courier =
+      assigned.courier_name || assigned.courier_company_name || "Shiprocket";
+    order.tracking.trackingNumber = String(assigned.awb_code);
+    await order.save();
+  }
+  if (!order.shipping.labelUrl) {
+    const label = await generateShiprocketLabel(order.shipping.shipmentId);
+    const labelUrl = label.label_url || label.response?.label_url;
+    if (!labelUrl)
+      throw new AppError(
+        label.message || "Shiprocket did not return a shipping label",
+        502,
+        "SHIPROCKET_LABEL_FAILED",
+      );
+    order.shipping.labelUrl = String(labelUrl);
+  }
+  order.status = "shipped";
+  order.statusHistory.push({
+    status: "shipped",
+    note: "Shipment created and label generated through Shiprocket",
+    by: req.user._id,
+  });
+
+  await order.save();
+  res.json({ success: true, order });
 });

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
+import { ArrowUpRight, CalendarDays, Clock3 } from "lucide-react";
 import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
+import AdminToast from "../components/AdminToast";
 const empty = {
   label: "Home",
   fullName: "",
@@ -16,15 +18,20 @@ const empty = {
   isDefault: false,
 };
 export default function Profile() {
-  const { user, ready } = useAuth();
+  const { user, ready, logoutAll } = useAuth();
   const [profile, setProfile] = useState(null),
     [form, setForm] = useState(empty),
     [editing, setEditing] = useState(""),
+    [addressFormOpen, setAddressFormOpen] = useState(false),
+    [addressToDelete, setAddressToDelete] = useState(null),
+    [confirmSignOutAll, setConfirmSignOutAll] = useState(false),
     [name, setName] = useState(""),
     [phone, setPhone] = useState(""),
-    [notice, setNotice] = useState(""),
-    [error, setError] = useState(""),
+    [toast, setToast] = useState(null),
     [busy, setBusy] = useState(false);
+  function showToast(type, text) {
+    setToast({ type, text });
+  }
   async function load() {
     const r = await api.get("/profile");
     setProfile(r.data.profile);
@@ -34,9 +41,28 @@ export default function Profile() {
   useEffect(() => {
     if (user)
       load().catch((e) =>
-        setError(e.response?.data?.message || "Unable to load profile"),
+        showToast(
+          "error",
+          e.response?.data?.message || "Unable to load profile",
+        ),
       );
   }, [user]);
+  useEffect(() => {
+    if (!addressToDelete) return;
+    function handleKeyDown(event) {
+      if (event.key === "Escape" && !busy) setAddressToDelete(null);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [addressToDelete, busy]);
+  useEffect(() => {
+    if (!confirmSignOutAll) return;
+    function handleKeyDown(event) {
+      if (event.key === "Escape" && !busy) setConfirmSignOutAll(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [confirmSignOutAll, busy]);
   if (!ready) return <div className="loading-state">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
   function change(k, v) {
@@ -48,10 +74,27 @@ export default function Profile() {
     try {
       await api.patch("/profile", { name, phone });
       await load();
-      setNotice("Profile updated.");
-      setError("");
+      showToast("success", "Profile updated.");
     } catch (e) {
-      setError(e.response?.data?.message || "Could not update profile");
+      showToast(
+        "error",
+        e.response?.data?.message || "Could not update profile",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function signOutAllDevices() {
+    setConfirmSignOutAll(false);
+    setBusy(true);
+    try {
+      await logoutAll();
+    } catch (e) {
+      showToast(
+        "error",
+        e.response?.data?.message ||
+          "Could not sign out on all devices. Please try again.",
+      );
     } finally {
       setBusy(false);
     }
@@ -65,44 +108,90 @@ export default function Profile() {
       await load();
       setForm(empty);
       setEditing("");
-      setNotice("Address saved.");
-      setError("");
+      setAddressFormOpen(false);
+      showToast("success", "Address saved.");
     } catch (e) {
-      setError(e.response?.data?.message || "Could not save address");
+      showToast("error", e.response?.data?.message || "Could not save address");
     } finally {
       setBusy(false);
     }
   }
-  async function remove(id) {
-    if (!confirm("Delete this saved address?")) return;
+  async function removeAddress() {
+    if (!addressToDelete) return;
+    setBusy(true);
     try {
-      await api.delete(`/profile/addresses/${id}`);
+      await api.delete(`/profile/addresses/${addressToDelete._id}`);
       await load();
+      setAddressToDelete(null);
+      showToast("success", "Address deleted.");
     } catch (e) {
-      setError(e.response?.data?.message || "Could not delete address");
+      showToast(
+        "error",
+        e.response?.data?.message || "Could not delete address",
+      );
+    } finally {
+      setBusy(false);
     }
   }
   async function makeDefault(id) {
     try {
       await api.post(`/profile/addresses/${id}/default`);
       await load();
+      showToast("success", "Default address updated.");
     } catch (e) {
-      setError(e.response?.data?.message || "Could not set default address");
+      showToast(
+        "error",
+        e.response?.data?.message || "Could not set default address",
+      );
     }
   }
   function edit(a) {
     setEditing(a._id);
     setForm({ ...empty, ...a });
+    setAddressFormOpen(true);
     window.scrollTo({ top: 500, behavior: "smooth" });
   }
   return (
     <section className="section account-page">
+      <AdminToast toast={toast} onDismiss={() => setToast(null)} />
       <span className="eyebrow">YOUR ACCOUNT</span>
       <h1 className="account-title">
         My <em>profile.</em>
       </h1>
-      {notice && <p className="notice">{notice}</p>}
-      {error && <p className="notice error">{error}</p>}
+      {user.role === "customer" && (
+        <section
+          className="profile-shortcuts"
+          aria-label="Explore bookings"
+        >
+          <div className="profile-shortcuts-heading">
+            <span className="eyebrow">MAKE TIME FOR YOURSELF</span>
+            <h2>Book your next visit</h2>
+            <p>Choose an appointment or session that works for you.</p>
+          </div>
+          <div className="profile-shortcut-grid">
+            <Link className="profile-shortcut-card" to="/classes">
+              <span className="profile-shortcut-icon">
+                <CalendarDays size={20} />
+              </span>
+              <span className="profile-shortcut-copy">
+                <strong>Sessions</strong>
+                <small>Explore upcoming classes and sessions</small>
+              </span>
+              <ArrowUpRight size={19} aria-hidden="true" />
+            </Link>
+            <Link className="profile-shortcut-card" to="/services">
+              <span className="profile-shortcut-icon">
+                <Clock3 size={20} />
+              </span>
+              <span className="profile-shortcut-copy">
+                <strong>Appointments</strong>
+                <small>Find a time that works for you</small>
+              </span>
+              <ArrowUpRight size={19} aria-hidden="true" />
+            </Link>
+          </div>
+        </section>
+      )}
       <div className="account-grid">
         <form className="account-card" onSubmit={saveProfile}>
           <h2>Personal details</h2>
@@ -127,14 +216,27 @@ export default function Profile() {
               onChange={(e) => setPhone(e.target.value)}
             />
           </label>
-          <button className="btn btn-dark" disabled={busy}>
-            Save profile
-          </button>
+          <div className="profile-actions">
+            <button
+              className="btn class-flow-button class-flow-button--gold"
+              disabled={busy}
+            >
+              Save profile
+            </button>
+            <button
+              type="button"
+              className="btn class-flow-button class-flow-button--gold"
+              disabled={busy}
+              onClick={() => setConfirmSignOutAll(true)}
+            >
+              {busy ? "Signing out…" : "Sign out everywhere"}
+            </button>
+          </div>
         </form>
         <div className="account-card">
           <div className="account-card-heading">
             <h2>Saved addresses</h2>
-            <span>{profile?.addresses?.length || 0}/10</span>
+            <span>{profile?.addresses?.length || 0}/3</span>
           </div>
           {profile?.addresses?.length ? (
             profile.addresses.map((a) => (
@@ -157,7 +259,9 @@ export default function Profile() {
                 </div>
                 <div className="address-actions">
                   <button onClick={() => edit(a)}>Edit</button>
-                  <button onClick={() => remove(a._id)}>Delete</button>
+                  <button type="button" onClick={() => setAddressToDelete(a)}>
+                    Delete
+                  </button>
                   {!a.isDefault && (
                     <button onClick={() => makeDefault(a._id)}>
                       Make default
@@ -167,119 +271,230 @@ export default function Profile() {
               </article>
             ))
           ) : (
-            <p>No saved addresses yet. Add one below.</p>
+            <p>No saved addresses yet.</p>
+          )}
+          <button
+            type="button"
+            className="btn class-flow-button class-flow-button--gold"
+            disabled={
+              busy ||
+              (!addressFormOpen &&
+                !editing &&
+                (profile?.addresses?.length || 0) >= 3)
+            }
+            onClick={() => {
+              if (addressFormOpen) {
+                setEditing("");
+                setForm(empty);
+                setAddressFormOpen(false);
+              } else {
+                setEditing("");
+                setForm(empty);
+                setAddressFormOpen(true);
+              }
+            }}
+          >
+            {addressFormOpen ? "Close address form" : "Add a delivery address"}
+          </button>
+          {(profile?.addresses?.length || 0) >= 3 && (
+            <p>
+              You can save up to 3 delivery addresses. Delete one to add
+              another.
+            </p>
           )}
         </div>
       </div>
-      <form className="account-card address-form" onSubmit={saveAddress}>
-        <h2>{editing ? "Edit address" : "Add a delivery address"}</h2>
-        <div className="account-form-grid">
-          <label>
-            Label
+      {addressFormOpen && (
+        <form className="account-card address-form" onSubmit={saveAddress}>
+          <h2>{editing ? "Edit address" : "Add a delivery address"}</h2>
+          <div className="account-form-grid">
+            <label>
+              Label
+              <input
+                required
+                value={form.label}
+                onChange={(e) => change("label", e.target.value)}
+                placeholder="Home, Work"
+              />
+            </label>
+            <label>
+              Full name
+              <input
+                required
+                value={form.fullName}
+                onChange={(e) => change("fullName", e.target.value)}
+              />
+            </label>
+            <label>
+              Phone
+              <input
+                required
+                value={form.phone}
+                onChange={(e) => change("phone", e.target.value)}
+              />
+            </label>
+            <label>
+              Address line 1
+              <input
+                required
+                value={form.line1}
+                onChange={(e) => change("line1", e.target.value)}
+              />
+            </label>
+            <label>
+              Address line 2
+              <input
+                value={form.line2}
+                onChange={(e) => change("line2", e.target.value)}
+              />
+            </label>
+            <label>
+              Landmark
+              <input
+                value={form.landmark}
+                onChange={(e) => change("landmark", e.target.value)}
+              />
+            </label>
+            <label>
+              City
+              <input
+                required
+                value={form.city}
+                onChange={(e) => change("city", e.target.value)}
+              />
+            </label>
+            <label>
+              State
+              <input
+                required
+                value={form.state}
+                onChange={(e) => change("state", e.target.value)}
+              />
+            </label>
+            <label>
+              Postal code
+              <input
+                required
+                value={form.postalCode}
+                onChange={(e) => change("postalCode", e.target.value)}
+              />
+            </label>
+            <label>
+              Country
+              <input
+                required
+                value={form.country}
+                onChange={(e) => change("country", e.target.value)}
+              />
+            </label>
+          </div>
+          <label className="check-label">
             <input
-              required
-              value={form.label}
-              onChange={(e) => change("label", e.target.value)}
-              placeholder="Home, Work"
-            />
+              type="checkbox"
+              checked={Boolean(form.isDefault)}
+              onChange={(e) => change("isDefault", e.target.checked)}
+            />{" "}
+            Set as default address
           </label>
-          <label>
-            Full name
-            <input
-              required
-              value={form.fullName}
-              onChange={(e) => change("fullName", e.target.value)}
-            />
-          </label>
-          <label>
-            Phone
-            <input
-              required
-              value={form.phone}
-              onChange={(e) => change("phone", e.target.value)}
-            />
-          </label>
-          <label>
-            Address line 1
-            <input
-              required
-              value={form.line1}
-              onChange={(e) => change("line1", e.target.value)}
-            />
-          </label>
-          <label>
-            Address line 2
-            <input
-              value={form.line2}
-              onChange={(e) => change("line2", e.target.value)}
-            />
-          </label>
-          <label>
-            Landmark
-            <input
-              value={form.landmark}
-              onChange={(e) => change("landmark", e.target.value)}
-            />
-          </label>
-          <label>
-            City
-            <input
-              required
-              value={form.city}
-              onChange={(e) => change("city", e.target.value)}
-            />
-          </label>
-          <label>
-            State
-            <input
-              required
-              value={form.state}
-              onChange={(e) => change("state", e.target.value)}
-            />
-          </label>
-          <label>
-            Postal code
-            <input
-              required
-              value={form.postalCode}
-              onChange={(e) => change("postalCode", e.target.value)}
-            />
-          </label>
-          <label>
-            Country
-            <input
-              required
-              value={form.country}
-              onChange={(e) => change("country", e.target.value)}
-            />
-          </label>
-        </div>
-        <label className="check-label">
-          <input
-            type="checkbox"
-            checked={Boolean(form.isDefault)}
-            onChange={(e) => change("isDefault", e.target.checked)}
-          />{" "}
-          Set as default address
-        </label>
-        <div className="inline-actions">
-          <button className="btn btn-dark" disabled={busy}>
-            {busy ? "Saving…" : editing ? "Update address" : "Save address"}
-          </button>
-          {editing && (
+          <div className="inline-actions">
+            <button
+              className="btn class-flow-button class-flow-button--gold"
+              disabled={busy}
+            >
+              {busy ? "Saving…" : editing ? "Update address" : "Save address"}
+            </button>
             <button
               type="button"
               className="btn btn-outline"
+              disabled={busy}
               onClick={() => {
                 setEditing("");
                 setForm(empty);
+                setAddressFormOpen(false);
               }}
             >
-              Cancel edit
+              Cancel
             </button>
-          )}
+          </div>
+        </form>
+      )}
+      {addressToDelete && (
+        <div className="confirm-overlay">
+          <div
+            className="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-address-title"
+            aria-describedby="delete-address-description"
+          >
+            <h2 id="delete-address-title">Delete saved address?</h2>
+            <p id="delete-address-description">
+              Delete the {addressToDelete.label || "saved"} address for{" "}
+              {addressToDelete.fullName}? This cannot be undone.
+            </p>
+            <div className="inline-actions">
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={busy}
+                autoFocus
+                onClick={() => setAddressToDelete(null)}
+              >
+                Keep address
+              </button>
+              <button
+                type="button"
+                className="btn btn-dark"
+                disabled={busy}
+                onClick={removeAddress}
+              >
+                {busy ? "Deleting…" : "Delete address"}
+              </button>
+            </div>
+          </div>
         </div>
-      </form>
+      )}
+      {confirmSignOutAll && (
+        <div
+          className="confirm-overlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !busy)
+              setConfirmSignOutAll(false);
+          }}
+        >
+          <div
+            className="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sign-out-all-title"
+            aria-describedby="sign-out-all-description"
+          >
+            <h2 id="sign-out-all-title">Sign out everywhere?</h2>
+            <p id="sign-out-all-description">
+              This will end all active sessions for your account, including this device. You will need to sign in again.
+            </p>
+            <div className="inline-actions">
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={busy}
+                autoFocus
+                onClick={() => setConfirmSignOutAll(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-dark"
+                disabled={busy}
+                onClick={signOutAllDevices}
+              >
+                {busy ? "Signing out…" : "Sign out everywhere"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

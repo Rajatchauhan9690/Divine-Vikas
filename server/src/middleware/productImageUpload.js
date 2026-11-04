@@ -1,29 +1,18 @@
-import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import multer from "multer";
 import AppError from "../utils/AppError.js";
 
-const uploadDirectory = fileURLToPath(new URL("../../uploads/", import.meta.url));
-const extensions = new Map([
-  ["image/jpeg", ".jpg"],
-  ["image/png", ".png"],
-  ["image/webp", ".webp"],
-  ["image/gif", ".gif"],
+const imageTypes = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
 ]);
 
-mkdirSync(uploadDirectory, { recursive: true });
-
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: uploadDirectory,
-    filename: (_req, file, callback) => {
-      callback(null, `${randomUUID()}${extensions.get(file.mimetype)}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, callback) => {
-    if (!extensions.has(file.mimetype))
+    if (!imageTypes.has(file.mimetype))
       return callback(
         new AppError(
           "Product images must be JPEG, PNG, WebP, or GIF",

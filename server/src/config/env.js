@@ -15,6 +15,11 @@ export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: Number(process.env.PORT) || 5000,
   mongoUri: process.env.MONGODB_URI,
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    apiKey: process.env.CLOUDINARY_API_KEY,
+    apiSecret: process.env.CLOUDINARY_API_SECRET,
+  },
   imageOrigins: (
     process.env.IMAGE_ORIGINS ||
     `http://localhost:${Number(process.env.PORT) || 5000},http://127.0.0.1:${Number(process.env.PORT) || 5000}`
@@ -23,9 +28,17 @@ export const env = {
     .map((origin) => origin.trim())
     .filter(Boolean),
   clientOrigin: process.env.CLIENT_ORIGIN || "http://localhost:5173",
+  clientOrigins: [
+    process.env.CLIENT_ORIGIN || "http://localhost:5173",
+    "https://divine-vikas-mp969ym3q-rajats-projects-149ec79a.vercel.app",
+    "https://divine-vikas.vercel.app",
+  ],
   accessSecret: process.env.ACCESS_TOKEN_SECRET,
   refreshSecret: process.env.REFRESH_TOKEN_SECRET,
   accessTtl: process.env.ACCESS_TOKEN_TTL || "10m",
   refreshDays: Number(process.env.REFRESH_TOKEN_DAYS) || 7,
-  sameSite: process.env.COOKIE_SAME_SITE || "lax",
+  sameSite:
+    process.env.NODE_ENV === "production"
+      ? "none"
+      : process.env.COOKIE_SAME_SITE || "lax",
 };

@@ -13,8 +13,14 @@ import productRoutes from "./routes/productRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
 import profileRoutes from "./routes/profileRoutes.js";
-import { cashfreeWebhook } from "./controllers/orderController.js";
+import {
+  cashfreeWebhook,
+  shiprocketWebhook,
+} from "./controllers/orderController.js";
 import classSessionRoutes from "./routes/classSessionRoutes.js";
+import serviceRoutes from "./routes/serviceRoutes.js";
+import subAdminSubscriptionRoutes from "./routes/subAdminSubscriptionRoutes.js";
+import { subAdminSubscriptionWebhook } from "./controllers/subAdminSubscriptionController.js";
 import { notFound, errorHandler } from "./middleware/errors.js";
 const app = express();
 app.disable("x-powered-by");
@@ -32,6 +38,7 @@ app.use(
           "'self'",
           "data:",
           "https://images.unsplash.com",
+          "https://res.cloudinary.com",
           ...env.imageOrigins,
         ],
       },
@@ -40,7 +47,7 @@ app.use(
 );
 app.use(
   cors({
-    origin: env.clientOrigin,
+    origin: env.clientOrigins,
     credentials: true,
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: [
@@ -57,9 +64,15 @@ app.post(
   express.raw({ type: "application/json", limit: "100kb" }),
   cashfreeWebhook,
 );
+app.post(
+  "/api/sub-admin-subscriptions/cashfree/webhook",
+  express.raw({ type: "application/json", limit: "100kb" }),
+  subAdminSubscriptionWebhook,
+);
 app.use(express.json({ limit: "20kb" }));
 app.use(express.urlencoded({ extended: false, limit: "20kb" }));
 app.use(cookieParser());
+app.post("/api/courier-updates", shiprocketWebhook);
 if (env.nodeEnv !== "test")
   app.use(morgan(env.nodeEnv === "production" ? "combined" : "dev"));
 app.get("/health", (req, res) =>
@@ -83,6 +96,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/classes", classSessionRoutes);
+app.use("/api/services", serviceRoutes);
+app.use("/api/sub-admin-subscriptions", subAdminSubscriptionRoutes);
 app.use(notFound);
 app.use(errorHandler);
 export default app;

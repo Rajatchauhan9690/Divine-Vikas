@@ -32,6 +32,8 @@ const schema = new mongoose.Schema(
         name: String,
         price: Number,
         quantity: { type: Number, min: 1, required: true },
+        returnable: { type: Boolean, default: true },
+        returnWindowDays: { type: Number, min: 1, max: 90, default: null },
       },
     ],
     total: { type: Number, required: true, min: 0 },
@@ -48,7 +50,7 @@ const schema = new mongoose.Schema(
       default: "pending",
     },
     shippingAddress: { type: addressSchema, required: true },
-    paymentMethod: { type: String, enum: ["cashfree", "cod"], default: "cod" },
+    paymentMethod: { type: String, enum: ["cashfree", "cod"], default: "cashfree" },
     paymentStatus: {
       type: String,
       enum: ["not_required", "pending", "paid", "failed", "refunded"],
@@ -60,7 +62,65 @@ const schema = new mongoose.Schema(
       cfPaymentId: String,
       paidAt: Date,
     },
-    tracking: { courier: String, trackingNumber: String, trackingUrl: String },
+    refund: {
+      status: {
+        type: String,
+        enum: ["not_requested", "processing", "pending", "success", "failed"],
+        default: "not_requested",
+      },
+      reason: { type: String, default: "" },
+      refundId: { type: String, default: "" },
+      idempotencyKey: { type: String, default: "" },
+      providerRefundId: { type: String, default: "" },
+      note: { type: String, default: "" },
+      updatedAt: Date,
+    },
+    returnRequest: {
+      status: {
+        type: String,
+        enum: [
+          "none",
+          "requested",
+          "approved",
+          "rejected",
+          "refund_pending",
+          "refund_failed",
+          "refunded",
+        ],
+        default: "none",
+      },
+      reason: { type: String, default: "" },
+      requestedAt: Date,
+      reviewedAt: Date,
+      reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      receivedAt: Date,
+    },
+    deliveredAt: { type: Date, default: null },
+    shipping: {
+      shiprocketOrderId: { type: String, default: "" },
+      shipmentId: { type: String, default: "" },
+      labelUrl: { type: String, default: "" },
+      package: {
+        weight: Number,
+        length: Number,
+        breadth: Number,
+        height: Number,
+      },
+    },
+    emailNotification: {
+      status: {
+        type: String,
+        enum: ["not_requested", "sending", "sent", "failed"],
+        default: "not_requested",
+      },
+      error: { type: String, default: "" },
+      sentAt: Date,
+    },
+    tracking: {
+      courier: String,
+      trackingNumber: String,
+      trackingUrl: String,
+    },
     statusHistory: [
       {
         status: {
@@ -79,7 +139,9 @@ const schema = new mongoose.Schema(
         by: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       },
     ],
-    addressChangeAllowed: { type: Boolean, default: true },
+    cancellationProcessing: { type: Boolean, default: false },
+    cancellationProcessingAt: { type: Date, default: null },
+    inventoryReleasedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

@@ -1,6 +1,7 @@
 import { Routes, Route } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import Layout from "../components/Layout";
+import AuthLayout from "../components/AuthLayout";
 import Home from "../pages/Home";
 const Shop = lazy(() => import("../pages/Shop"));
 const Product = lazy(() => import("../pages/Product"));
@@ -8,8 +9,12 @@ const Auth = lazy(() => import("../pages/Auth"));
 const Cart = lazy(() => import("../pages/Cart"));
 const Admin = lazy(() => import("../pages/Admin"));
 const ClassBookings = lazy(() => import("../pages/ClassBookings"));
+const ServiceBookings = lazy(() => import("../pages/ServiceBookings"));
+const SubAdminInvitation = lazy(() => import("../pages/SubAdminInvitation"));
 const Profile = lazy(() => import("../pages/Profile"));
 const Orders = lazy(() => import("../pages/Orders"));
+const Support = lazy(() => import("../pages/Support"));
+const PasswordReset = lazy(() => import("../pages/PasswordReset"));
 function Loading() {
   return <div className="loading-state">Loading Divine Vikas…</div>;
 }
@@ -21,14 +26,19 @@ export default function App() {
           <Route index element={<Home />} />
           <Route path="shop" element={<Shop />} />
           <Route path="classes" element={<ClassBookings />} />
+          <Route path="services" element={<ServiceBookings />} />
           <Route path="products/:id" element={<Product />} />
           <Route path="cart" element={<Cart />} />
           <Route path="profile" element={<Profile />} />
           <Route path="orders" element={<Orders />} />
-          <Route path="login" element={<Auth mode="login" />} />
-          <Route path="register" element={<Auth mode="register" />} />
+          <Route path="orders/:id" element={<Orders />} />
+          <Route path="support" element={<Support />} />
+          <Route element={<AuthLayout />}>
+            <Route path="login" element={<Auth mode="login" />} />
+            <Route path="register" element={<Auth mode="register" />} />
+            <Route path="password-reset" element={<PasswordReset />} />
+          </Route>
           <Route path="admin" element={<Admin />} />
-
           <Route
             path="*"
             element={

@@ -1,14 +1,36 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { ShoppingBag, ArrowLeft, Leaf, ShieldCheck } from "lucide-react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
+import {
+  ShoppingBag,
+  ShoppingCart,
+  ArrowLeft,
+  Leaf,
+  ShieldCheck,
+} from "lucide-react";
 import { api } from "../services/api";
 import { useCart } from "../features/cart/CartContext";
+import { useAuth } from "../features/auth/AuthContext";
 export default function Product() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [p, setP] = useState(null),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [added, setAdded] = useState(false);
   const { add } = useCart();
+  const { user, ready } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const canPurchase = ready && !isAdmin;
+  function addToCart() {
+    add(p);
+    setAdded(true);
+  }
+  function buyNow() {
+    add(p);
+    navigate("/cart");
+  }
   useEffect(() => {
+    setAdded(false);
     api
       .get(`/products/${id}`)
       .then((r) => setP(r.data.product))
@@ -25,12 +47,12 @@ export default function Product() {
   return (
     <section className="section product-detail">
       <div className="detail-image">
+        <Link className="product-image-back-link" to="/shop">
+          <ArrowLeft size={16} /> Back to collection
+        </Link>
         {p.image && <img src={p.image} alt={p.name} />}
       </div>
       <div className="detail-copy">
-        <Link className="back-link" to="/shop">
-          <ArrowLeft size={16} /> Back to collection
-        </Link>
         <span className="eyebrow">{p.category || "THE COLLECTION"}</span>
         <h1>{p.name}</h1>
         <div className="detail-rating">
@@ -41,6 +63,13 @@ export default function Product() {
           {p.description ||
             p.shortDescription ||
             "A thoughtful fragrance made to bring a little beauty to your everyday ritual."}
+        </p>
+        <p className="product-return-policy">
+          {p.returnable === false || !p.returnWindowDays
+            ? "This product is non-returnable."
+            : `Return requests are accepted within ${p.returnWindowDays} ${
+                p.returnWindowDays === 1 ? "day" : "days"
+              } after delivery. For multi-item orders, all items must still be within their return windows.`}
         </p>
         <div className="detail-benefits">
           <span>
@@ -55,14 +84,42 @@ export default function Product() {
             ? `In stock · ${p.stock} available`
             : "Currently out of stock"}
         </p>
-        <button
-          className="btn btn-dark btn-full"
-          disabled={!p.stock}
-          onClick={() => add(p)}
-        >
-          <ShoppingBag size={17} /> Add to bag — ₹{p.price}
-        </button>
+        {canPurchase && <div className="product-purchase-actions">
+          <PurchaseButtons
+            stock={p.stock}
+            addToCart={addToCart}
+            buyNow={buyNow}
+          />
+        </div>}
+        {canPurchase && added && (
+          <p className="cart-confirmation" role="status">
+            Added to your bag. <Link to="/cart">View bag</Link>
+          </p>
+        )}
       </div>
+      {canPurchase && createPortal(
+        <div className="product-purchase-actions product-purchase-actions-mobile">
+          <PurchaseButtons
+            stock={p.stock}
+            addToCart={addToCart}
+            buyNow={buyNow}
+          />
+        </div>,
+        document.body,
+      )}
     </section>
+  );
+}
+
+function PurchaseButtons({ stock, addToCart, buyNow }) {
+  return (
+    <>
+      <button className="btn btn-outline" disabled={!stock} onClick={addToCart}>
+        <ShoppingBag size={17} /> Add to cart
+      </button>
+      <button className="btn btn-dark" disabled={!stock} onClick={buyNow}>
+        <ShoppingCart size={17} /> Buy now
+      </button>
+    </>
   );
 }
