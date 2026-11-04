@@ -28,7 +28,7 @@ export default function App() {
           <Route path="login" element={<Auth mode="login" />} />
           <Route path="register" element={<Auth mode="register" />} />
           <Route path="admin" element={<Admin />} />
-          <Route path="admin" element={<Admin />} />
+
           <Route
             path="*"
             element={
