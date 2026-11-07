@@ -4,6 +4,7 @@ import { ArrowUpRight, CalendarDays, Clock3 } from "lucide-react";
 import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
 import AdminToast from "../components/AdminToast";
+import Seo from "../components/Seo";
 const empty = {
   label: "Home",
   fullName: "",
@@ -153,6 +154,11 @@ export default function Profile() {
   }
   return (
     <section className="section account-page">
+      <Seo
+        title="Your Account Profile"
+        description="Manage your Divine Vikas account profile and saved delivery addresses."
+        robots="noindex, nofollow"
+      />
       <AdminToast toast={toast} onDismiss={() => setToast(null)} />
       <span className="eyebrow">YOUR ACCOUNT</span>
       <h1 className="account-title">

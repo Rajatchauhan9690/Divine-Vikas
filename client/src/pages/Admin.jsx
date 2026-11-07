@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
+import Seo from "../components/Seo";
 const blank = {
   name: "",
   price: "",
@@ -349,6 +350,11 @@ export default function Admin() {
     <section
       className={`section admin-page${user.role === "sub_admin" ? " admin-page-sub-admin" : ""}`}
     >
+      <Seo
+        title={`${sectionTitle || "Dashboard"} Management`}
+        description="Private Divine Vikas administration workspace."
+        robots="noindex, nofollow"
+      />
       <div className="admin-heading">
         <div>
           <span className="eyebrow">STORE MANAGEMENT</span>

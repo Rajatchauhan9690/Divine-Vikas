@@ -15,6 +15,7 @@ import { useAuth } from "../features/auth/AuthContext";
 import CashfreeCustomCheckout from "../components/CashfreeCustomCheckout";
 import AdminToast from "../components/AdminToast";
 import PaymentSuccess from "../components/PaymentSuccess";
+import Seo from "../components/Seo";
 
 const CHECKOUT_STORAGE_KEY = "service-custom-checkout";
 const SERVICES_PER_PAGE = 10;
@@ -335,6 +336,11 @@ export default function ServiceBookings() {
 
   return (
     <section className="section service-booking-page">
+      <Seo
+        title="Book an Appointment"
+        description="Explore Divine Vikas appointment services, choose an available time, and book your visit online."
+        robots={user ? "noindex, follow" : "index, follow"}
+      />
       <AdminToast toast={toast} onDismiss={() => setToast(null)} />
       {paymentSuccess && (
         <PaymentSuccess

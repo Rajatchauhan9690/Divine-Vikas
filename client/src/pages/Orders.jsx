@@ -16,6 +16,7 @@ import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
 import { useCart } from "../features/cart/CartContext";
 import PaymentSuccess from "../components/PaymentSuccess";
+import Seo from "../components/Seo";
 const stages = ["pending", "paid", "processing", "shipped", "delivered"];
 const cancellationWindowMs = 6 * 60 * 60 * 1000;
 const ORDERS_PER_PAGE = 6;
@@ -200,6 +201,11 @@ export default function Orders() {
   }
   return (
     <section className="section orders-page">
+      <Seo
+        title={orderId ? "Order Details" : "Your Orders"}
+        description="Privately review your Divine Vikas order history, payment status, and delivery updates."
+        robots="noindex, nofollow"
+      />
       {paymentSuccess && (
         <PaymentSuccess
           title="Your order is confirmed"

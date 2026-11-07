@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Flower2, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../features/auth/AuthContext";
+import Seo from "../components/Seo";
 export default function Auth({ mode = "login" }) {
   const isLogin = mode === "login";
   const [form, setForm] = useState({ name: "", email: "", password: "" }),
@@ -46,6 +47,15 @@ export default function Auth({ mode = "login" }) {
   }
   return (
     <div className="auth-form-wrap">
+        <Seo
+          title={isLogin ? "Sign In" : "Create Your Account"}
+          description={
+            isLogin
+              ? "Sign in to your Divine Vikas account."
+              : "Create a Divine Vikas account to manage orders and bookings."
+          }
+          robots="noindex, nofollow"
+        />
         <div className="auth-topbar">
           <div className="auth-brand">
             <Flower2 />

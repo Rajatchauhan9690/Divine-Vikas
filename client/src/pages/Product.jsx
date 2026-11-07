@@ -11,6 +11,7 @@ import {
 import { api } from "../services/api";
 import { useCart } from "../features/cart/CartContext";
 import { useAuth } from "../features/auth/AuthContext";
+import Seo from "../components/Seo";
 export default function Product() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -39,13 +40,62 @@ export default function Product() {
   if (error)
     return (
       <section className="section">
+        <Seo
+          title="Fragrance Not Found"
+          description="This Divine Vikas fragrance could not be found. Browse the collection to discover other scents."
+          robots="noindex, follow"
+        />
         <p>{error}</p>
         <Link to="/shop">Back to shop</Link>
       </section>
     );
-  if (!p) return <div className="loading-state">Finding your fragrance…</div>;
+  if (!p)
+    return (
+      <>
+        <Seo
+          title="Discover Our Fragrances"
+          description="Explore thoughtful, quality-first fragrances from Divine Vikas."
+        />
+        <div className="loading-state">Finding your fragrance…</div>
+      </>
+    );
   return (
-    <section className="section product-detail">
+    <>
+      <Seo
+        title={`${p.name} Fragrance`}
+        description={(p.description || p.shortDescription ||
+          `Discover ${p.name}, a thoughtful Divine Vikas fragrance for your everyday ritual.`).slice(
+          0,
+          160,
+        )}
+        image={p.image || undefined}
+        type="product"
+        structuredData={{
+          "@context": "https://schema.org",
+          "@type": "Product",
+          name: p.name,
+          description:
+            p.description ||
+            p.shortDescription ||
+            `A thoughtful Divine Vikas fragrance for your everyday ritual.`,
+          image: p.image
+            ? [new URL(p.image, window.location.origin).href]
+            : undefined,
+          category: p.category || undefined,
+          brand: { "@type": "Brand", name: "Divine Vikas" },
+          offers: {
+            "@type": "Offer",
+            priceCurrency: "INR",
+            price: p.price,
+            availability:
+              p.stock > 0
+                ? "https://schema.org/InStock"
+                : "https://schema.org/OutOfStock",
+            url: `${window.location.origin}${window.location.pathname}`,
+          },
+        }}
+      />
+      <section className="section product-detail">
       <div className="detail-image">
         <Link className="product-image-back-link" to="/shop">
           <ArrowLeft size={16} /> Back to collection
@@ -107,7 +157,8 @@ export default function Product() {
         </div>,
         document.body,
       )}
-    </section>
+      </section>
+    </>
   );
 }
 

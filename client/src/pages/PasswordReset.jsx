@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ArrowLeft, Flower2 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api";
+import Seo from "../components/Seo";
 
 export default function PasswordReset() {
   const [email, setEmail] = useState("");
@@ -63,6 +64,11 @@ export default function PasswordReset() {
     <div
       className={`auth-form-wrap${step === "verify" ? " auth-form-wrap--verify" : ""}`}
     >
+      <Seo
+        title="Reset Your Password"
+        description="Securely reset the password for your Divine Vikas account."
+        robots="noindex, nofollow"
+      />
       <div className="auth-topbar">
         <div className="auth-brand">
           <Flower2 />

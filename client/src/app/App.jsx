@@ -2,6 +2,7 @@ import { Routes, Route } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import Layout from "../components/Layout";
 import AuthLayout from "../components/AuthLayout";
+import Seo from "../components/Seo";
 import Home from "../pages/Home";
 const Shop = lazy(() => import("../pages/Shop"));
 const Product = lazy(() => import("../pages/Product"));
@@ -43,6 +44,11 @@ export default function App() {
             path="*"
             element={
               <section className="section">
+                <Seo
+                  title="Page Not Found"
+                  description="The page you are looking for could not be found. Explore Divine Vikas fragrances and services."
+                  robots="noindex, follow"
+                />
                 <h1>Page not found</h1>
                 <a className="text-link" href="/">
                   Return home

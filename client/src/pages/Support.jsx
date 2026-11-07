@@ -1,5 +1,6 @@
 import { Mail, MessageCircle, Package, Phone } from "lucide-react";
 import { Link } from "react-router-dom";
+import Seo from "../components/Seo";
 
 const supportEmail = import.meta.env.VITE_SUPPORT_EMAIL?.trim();
 const supportPhone = import.meta.env.VITE_SUPPORT_PHONE?.trim();
@@ -35,6 +36,10 @@ export default function Support() {
 
   return (
     <section className="section support-page">
+      <Seo
+        title="Customer Support"
+        description="Contact Divine Vikas for help with fragrance products, orders, payments, class bookings, and appointments."
+      />
       <div className="shop-intro">
         <span className="eyebrow">WE’RE HERE TO HELP</span>
         <h1>

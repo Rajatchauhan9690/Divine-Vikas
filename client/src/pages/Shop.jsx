@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { api } from "../services/api";
 import ProductCard from "../components/ProductCard";
+import Seo from "../components/Seo";
 export default function Shop() {
   const [products, setProducts] = useState([]),
     [search, setSearch] = useState(""),
@@ -38,6 +39,10 @@ export default function Shop() {
   }, [search, category]);
   return (
     <section className="section shop-page">
+      <Seo
+        title="Shop Fragrances"
+        description="Explore Divine Vikas fragrances and find an everyday favourite or a thoughtful gift. Discover quality-first scents inspired by bhav and bhakti."
+      />
       <div className="shop-intro">
         <span className="eyebrow">SOMETHING FOR EVERY MOOD</span>
         <h1>

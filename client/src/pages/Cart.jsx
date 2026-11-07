@@ -7,6 +7,7 @@ import { api } from "../services/api";
 import { useEffect, useState } from "react";
 import CashfreeCustomCheckout from "../components/CashfreeCustomCheckout";
 import PaymentSuccess from "../components/PaymentSuccess";
+import Seo from "../components/Seo";
 const emptyAddress = {
   label: "Home",
   fullName: "",
@@ -181,6 +182,11 @@ export default function Cart() {
   if (user?.role === "admin") return <Navigate to="/admin" replace />;
   return (
     <section className="section cart-page">
+      <Seo
+        title="Your Shopping Cart"
+        description="Review your Divine Vikas fragrance selections and continue to secure checkout."
+        robots="noindex, follow"
+      />
       {paymentSuccess && (
         <PaymentSuccess
           title="Your order is confirmed"
