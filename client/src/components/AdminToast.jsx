@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, X, XCircle } from "lucide-react";
 import { createPortal } from "react-dom";
 
-function ToastItem({ toast, onDismiss }) {
+function ToastItem({ toast, onDismiss, duration }) {
   useEffect(() => {
-    const timer = window.setTimeout(() => onDismiss(toast.id), 4500);
+    if (duration === null) return;
+    const timer = window.setTimeout(() => onDismiss(toast.id), duration);
     return () => window.clearTimeout(timer);
-  }, [onDismiss, toast.id]);
+  }, [duration, onDismiss, toast.id]);
 
   const isError = toast.type === "error";
   const Icon = isError ? XCircle : CheckCircle2;
@@ -31,7 +32,7 @@ function ToastItem({ toast, onDismiss }) {
   );
 }
 
-export default function AdminToast({ toast, onDismiss }) {
+export default function AdminToast({ toast, onDismiss, duration = 4500 }) {
   const [toasts, setToasts] = useState([]);
   const nextId = useRef(0);
   const lastToast = useRef(null);
@@ -68,6 +69,7 @@ export default function AdminToast({ toast, onDismiss }) {
           key={item.id}
           toast={item}
           onDismiss={dismiss}
+          duration={duration}
         />
       ))}
     </div>,

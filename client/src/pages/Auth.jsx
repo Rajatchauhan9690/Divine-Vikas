@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Flower2, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../features/auth/AuthContext";
+import ErrorToast from "../components/ErrorToast";
 import Seo from "../components/Seo";
 export default function Auth({ mode = "login" }) {
   const isLogin = mode === "login";
@@ -56,6 +57,7 @@ export default function Auth({ mode = "login" }) {
           }
           robots="noindex, nofollow"
         />
+        <ErrorToast error={error} onDismiss={() => setError("")} />
         <div className="auth-topbar">
           <div className="auth-brand">
             <Flower2 />

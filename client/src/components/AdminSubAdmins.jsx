@@ -12,6 +12,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { api } from "../services/api";
+import ErrorToast from "./ErrorToast";
 
 const invitesPerPage = 8;
 const appointmentsPerPage = 8;
@@ -220,6 +221,11 @@ export default function AdminSubAdmins({ onToast }) {
 
   return (
     <section className="admin-services">
+      <ErrorToast error={error} onDismiss={() => setError("")} />
+      <ErrorToast
+        error={accountServicesError}
+        onDismiss={() => setAccountServicesError("")}
+      />
       <header className="admin-list-head">
         <div>
           <h2>Sub-admin access</h2>

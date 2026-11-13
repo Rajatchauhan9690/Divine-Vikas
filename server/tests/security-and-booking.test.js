@@ -264,6 +264,15 @@ test('password reset verifies a delivered OTP and revokes existing sessions', as
     });
     assert.ok(resetRecord);
     assert.notEqual(resetRecord.otpHash, otp);
+    assert.equal(
+      resetRecord.expiresAt.getTime() - resetRecord.lastSentAt.getTime(),
+      10 * 60 * 1000,
+      'reset code should remain valid for ten minutes',
+    );
+    await User.collection.updateOne(
+      { _id: new mongoose.Types.ObjectId(customer.user.id) },
+      { $set: { addresses: [{ fullName: '', phone: '' }] } },
+    );
 
     const agent = request.agent(app);
     const csrfToken = await getCsrf(agent);

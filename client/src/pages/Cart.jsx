@@ -7,6 +7,7 @@ import { api } from "../services/api";
 import { useEffect, useState } from "react";
 import CashfreeCustomCheckout from "../components/CashfreeCustomCheckout";
 import PaymentSuccess from "../components/PaymentSuccess";
+import ErrorToast from "../components/ErrorToast";
 import Seo from "../components/Seo";
 const emptyAddress = {
   label: "Home",
@@ -187,6 +188,7 @@ export default function Cart() {
         description="Review your Divine Vikas fragrance selections and continue to secure checkout."
         robots="noindex, follow"
       />
+      <ErrorToast error={message} onDismiss={() => setMessage("")} />
       {paymentSuccess && (
         <PaymentSuccess
           title="Your order is confirmed"

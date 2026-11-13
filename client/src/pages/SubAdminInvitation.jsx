@@ -6,6 +6,7 @@ import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
 import CashfreeCustomCheckout from "../components/CashfreeCustomCheckout";
 import PaymentSuccess from "../components/PaymentSuccess";
+import ErrorToast from "../components/ErrorToast";
 import Seo from "../components/Seo";
 
 const formatPlanTerm = (durationMonths) =>
@@ -463,6 +464,7 @@ export default function SubAdminInvitation() {
         description="Complete your private Divine Vikas sub-admin account and subscription setup."
         robots="noindex, nofollow"
       />
+      <ErrorToast error={error} onDismiss={() => setError("")} />
     <div
       className={`auth-form-wrap sub-admin-invitation-card${step === 3 ? " is-subscription-review" : ""}`}
     >

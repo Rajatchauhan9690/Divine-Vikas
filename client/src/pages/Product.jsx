@@ -11,6 +11,7 @@ import {
 import { api } from "../services/api";
 import { useCart } from "../features/cart/CartContext";
 import { useAuth } from "../features/auth/AuthContext";
+import ErrorToast from "../components/ErrorToast";
 import Seo from "../components/Seo";
 export default function Product() {
   const { id } = useParams();
@@ -45,6 +46,7 @@ export default function Product() {
           description="This Divine Vikas fragrance could not be found. Browse the collection to discover other scents."
           robots="noindex, follow"
         />
+        <ErrorToast error={error} onDismiss={() => setError("")} />
         <p>{error}</p>
         <Link to="/shop">Back to shop</Link>
       </section>

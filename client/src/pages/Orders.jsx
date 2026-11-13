@@ -16,6 +16,7 @@ import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
 import { useCart } from "../features/cart/CartContext";
 import PaymentSuccess from "../components/PaymentSuccess";
+import ErrorToast from "../components/ErrorToast";
 import Seo from "../components/Seo";
 const stages = ["pending", "paid", "processing", "shipped", "delivered"];
 const cancellationWindowMs = 6 * 60 * 60 * 1000;
@@ -206,6 +207,7 @@ export default function Orders() {
         description="Privately review your Divine Vikas order history, payment status, and delivery updates."
         robots="noindex, nofollow"
       />
+      <ErrorToast error={error} onDismiss={() => setError("")} />
       {paymentSuccess && (
         <PaymentSuccess
           title="Your order is confirmed"

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { api } from "../services/api";
 import ProductCard from "../components/ProductCard";
+import ErrorToast from "../components/ErrorToast";
 import Seo from "../components/Seo";
 export default function Shop() {
   const [products, setProducts] = useState([]),
@@ -43,6 +44,7 @@ export default function Shop() {
         title="Shop Fragrances"
         description="Explore Divine Vikas fragrances and find an everyday favourite or a thoughtful gift. Discover quality-first scents inspired by bhav and bhakti."
       />
+      <ErrorToast error={error} onDismiss={() => setError("")} />
       <div className="shop-intro">
         <span className="eyebrow">SOMETHING FOR EVERY MOOD</span>
         <h1>

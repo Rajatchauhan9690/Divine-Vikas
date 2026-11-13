@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { api } from "../services/api";
+import ErrorToast from "./ErrorToast";
 import CashfreeCustomCheckout from "./CashfreeCustomCheckout";
 
 function subscriptionTerm(durationMonths = 1) {
@@ -102,22 +103,25 @@ export default function SubAdminSubscription() {
 
   if (checkout?.payment)
     return (
-      <CashfreeCustomCheckout
-        payment={checkout.payment}
-        sessionTitle={`${subscription.planName} subscription renewal`}
-        price={checkout.amount}
-        totalAmount={checkout.amount}
-        email=""
-        phone=""
-        checkoutTitle="Renew your subscription"
-        summaryLabel={`${subscription.planName} PLAN`}
-        summaryDescription={`${subscription.planName} · ₹${checkout.amount} / ${subscriptionTerm(subscription.durationMonths)} · manual renewal`}
-        expiryLabel="Checkout expires"
-        pendingMessage="Cashfree is confirming the renewal. Your workspace remains available while payment is checked."
-        unconfirmedMessage="The payment is not confirmed yet. Check the subscription page again shortly."
-        onBack={() => setCheckout(null)}
-        onPaymentComplete={completePayment}
-      />
+      <>
+        <ErrorToast error={error} onDismiss={() => setError("")} />
+        <CashfreeCustomCheckout
+          payment={checkout.payment}
+          sessionTitle={`${subscription.planName} subscription renewal`}
+          price={checkout.amount}
+          totalAmount={checkout.amount}
+          email=""
+          phone=""
+          checkoutTitle="Renew your subscription"
+          summaryLabel={`${subscription.planName} PLAN`}
+          summaryDescription={`${subscription.planName} · ₹${checkout.amount} / ${subscriptionTerm(subscription.durationMonths)} · manual renewal`}
+          expiryLabel="Checkout expires"
+          pendingMessage="Cashfree is confirming the renewal. Your workspace remains available while payment is checked."
+          unconfirmedMessage="The payment is not confirmed yet. Check the subscription page again shortly."
+          onBack={() => setCheckout(null)}
+          onPaymentComplete={completePayment}
+        />
+      </>
     );
 
   const periodEnd = subscription?.currentPeriodEnd
@@ -125,6 +129,7 @@ export default function SubAdminSubscription() {
     : null;
   return (
     <section className="subscription-management">
+      <ErrorToast error={error} onDismiss={() => setError("")} />
       <div className="subscription-management-card">
         <header className="subscription-management-header">
           <div className="subscription-management-kicker">
