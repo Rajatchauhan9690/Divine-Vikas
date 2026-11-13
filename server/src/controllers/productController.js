@@ -20,6 +20,15 @@ function parseReturnable(value) {
   return null;
 }
 
+function parseShippingWeight(value) {
+  if (value === undefined || value === null || String(value).trim() === "")
+    return null;
+  const weight = Number(value);
+  return Number.isFinite(weight) && weight >= 0.001 && weight <= 100
+    ? weight
+    : undefined;
+}
+
 export const listProducts = asyncHandler(async (req, res) => {
   const { search = "", category = "" } = req.query;
   const filter = { active: true };
@@ -65,11 +74,13 @@ export const createProduct = asyncHandler(async (req, res) => {
     shortDescription,
     description,
     stock,
+    shippingWeightKg: rawShippingWeightKg,
     returnable: rawReturnable,
     returnWindowDays: rawReturnWindowDays,
   } = req.body;
   const parsedPrice = Number(price);
   const parsedStock = Number(stock);
+  const shippingWeightKg = parseShippingWeight(rawShippingWeightKg);
   const parsedReturnable = parseReturnable(rawReturnable);
   const returnable = parsedReturnable ?? true;
   const returnWindowDays = parseReturnWindowDays(rawReturnWindowDays);
@@ -93,6 +104,7 @@ export const createProduct = asyncHandler(async (req, res) => {
     !Number.isInteger(parsedStock) ||
     parsedStock < 0 ||
     (rawReturnable !== undefined && parsedReturnable === null) ||
+    (rawShippingWeightKg !== undefined && shippingWeightKg === undefined) ||
     (returnable &&
       (!Number.isInteger(returnWindowDays) ||
         returnWindowDays < 1 ||
@@ -117,6 +129,7 @@ export const createProduct = asyncHandler(async (req, res) => {
       description: description.trim(),
       image: uploadedImage.url,
       stock: parsedStock,
+      shippingWeightKg,
       returnable,
       returnWindowDays: returnable ? returnWindowDays : null,
     });
@@ -145,11 +158,16 @@ export const updateProduct = asyncHandler(async (req, res) => {
     shortDescription,
     description,
     stock,
+    shippingWeightKg: rawShippingWeightKg,
     returnable: rawReturnable,
     returnWindowDays: rawReturnWindowDays,
   } = req.body;
   const parsedPrice = Number(price);
   const parsedStock = Number(stock);
+  const shippingWeightKg =
+    rawShippingWeightKg === undefined
+      ? undefined
+      : parseShippingWeight(rawShippingWeightKg);
   const returnable = parseReturnable(rawReturnable);
   const returnWindowDays =
     rawReturnWindowDays === undefined
@@ -175,6 +193,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
     !Number.isInteger(parsedStock) ||
     parsedStock < 0 ||
     (rawReturnable !== undefined && returnable === null) ||
+    (rawShippingWeightKg !== undefined && shippingWeightKg === undefined) ||
     (rawReturnWindowDays !== undefined && returnWindowDays === undefined)
   ) {
     throw new AppError(
@@ -221,6 +240,8 @@ export const updateProduct = asyncHandler(async (req, res) => {
     product.shortDescription = shortDescription.trim();
     product.description = description.trim();
     product.stock = parsedStock;
+    if (shippingWeightKg !== undefined)
+      product.shippingWeightKg = shippingWeightKg;
     product.returnable = nextReturnable;
     product.returnWindowDays = nextReturnable ? nextReturnWindowDays : null;
     if (uploadedImage) product.image = uploadedImage.url;

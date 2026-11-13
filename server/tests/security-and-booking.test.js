@@ -15,6 +15,7 @@ process.env.SMTP_HOST = '';
 process.env.SMTP_USER = '';
 process.env.SMTP_PASSWORD = '';
 process.env.SMTP_FROM = '';
+process.env.SHIPROCKET_AUTO_BOOK_PAID_ORDERS = 'false';
 
 let mongo;
 let app;
@@ -23,6 +24,7 @@ let Session;
 let ClassSession;
 let Product;
 let Order;
+let Coupon;
 let ProductPaymentAttempt;
 let RateLimitBucket;
 let ClassPaymentHold;
@@ -40,6 +42,7 @@ before(async () => {
   ({ default: ClassSession } = await import('../src/models/ClassSession.js'));
   ({ default: Product } = await import('../src/models/Product.js'));
   ({ default: Order } = await import('../src/models/Order.js'));
+  ({ default: Coupon } = await import('../src/models/Coupon.js'));
   ({ default: ProductPaymentAttempt } = await import('../src/models/ProductPaymentAttempt.js'));
   ({ default: RateLimitBucket } = await import('../src/models/RateLimitBucket.js'));
   ({ default: ClassPaymentHold } = await import('../src/models/ClassPaymentHold.js'));
@@ -61,6 +64,7 @@ beforeEach(async () => {
     ClassSession.deleteMany({}),
     Product.deleteMany({}),
     Order.deleteMany({}),
+    Coupon.deleteMany({}),
     ProductPaymentAttempt.deleteMany({}),
     RateLimitBucket.deleteMany({}),
     ClassPaymentHold.deleteMany({}),
@@ -149,6 +153,41 @@ test('customers can save at most three delivery addresses', async () => {
   assert.equal(fourthAddress.body.code, 'ADDRESS_LIMIT');
   const user = await User.findById(customer.user.id);
   assert.equal(user.addresses.length, 3);
+});
+
+test('admins can create, edit, deactivate, and delete coupons', async () => {
+  const administrator = await registerUser('coupon-admin@example.com');
+  await User.updateOne(
+    { _id: administrator.user.id },
+    { $set: { role: 'admin' } },
+  );
+  const couponInput = {
+    code: 'WELCOME10',
+    description: 'Welcome offer',
+    discountType: 'percent',
+    value: 10,
+    maxDiscountAmount: 300,
+    minimumOrderAmount: 500,
+    usageLimit: 25,
+    active: true,
+  };
+  const created = await request(app)
+    .post('/api/admin/coupons')
+    .set('Authorization', `Bearer ${administrator.accessToken}`)
+    .send(couponInput)
+    .expect(201);
+  assert.equal(created.body.coupon.code, 'WELCOME10');
+  assert.equal(created.body.coupon.maxDiscountAmount, 300);
+  const updated = await request(app)
+    .put(`/api/admin/coupons/${created.body.coupon._id}`)
+    .set('Authorization', `Bearer ${administrator.accessToken}`)
+    .send({ ...couponInput, active: false })
+    .expect(200);
+  assert.equal(updated.body.coupon.active, false);
+  await request(app)
+    .delete(`/api/admin/coupons/${created.body.coupon._id}`)
+    .set('Authorization', `Bearer ${administrator.accessToken}`)
+    .expect(200);
 });
 
 test('cookie-backed authentication rejects unsafe requests without a valid CSRF token', async () => {
@@ -2175,6 +2214,7 @@ test('Cashfree product checkout creates an order only after successful payment',
     name: 'Deferred Order Product',
     price: 250,
     stock: 3,
+    shippingWeightKg: 0.35,
     returnWindowDays: 5,
   });
   const address = {
@@ -2188,21 +2228,59 @@ test('Cashfree product checkout creates an order only after successful payment',
   const originalFetch = globalThis.fetch;
   const originalClientId = process.env.CASHFREE_CLIENT_ID;
   const originalClientSecret = process.env.CASHFREE_CLIENT_SECRET;
+  const originalPickupPostcode = process.env.SHIPROCKET_PICKUP_POSTCODE;
+  const originalShippingTare = process.env.SHIPROCKET_PACKAGE_TARE_KG;
+  const originalShiprocketEmail = process.env.SHIPROCKET_EMAIL;
+  const originalShiprocketPassword = process.env.SHIPROCKET_PASSWORD;
   process.env.CASHFREE_CLIENT_ID = 'test-client-id';
   process.env.CASHFREE_CLIENT_SECRET = 'test-cashfree-webhook-secret';
+  process.env.SHIPROCKET_PICKUP_POSTCODE = '411001';
+  process.env.SHIPROCKET_PACKAGE_TARE_KG = '0.2';
+  process.env.SHIPROCKET_EMAIL = 'checkout-quote@example.test';
+  process.env.SHIPROCKET_PASSWORD = 'test-shiprocket-password';
+  let availableCouriers = [
+    {
+      courier_company_id: 7,
+      courier_name: 'Lowest Cost Courier',
+      rate: 25,
+      estimated_delivery_days: '6',
+    },
+    {
+      courier_company_id: 8,
+      courier_name: 'Fastest Courier',
+      rate: 50,
+      estimated_delivery_days: '2',
+    },
+    {
+      courier_company_id: 9,
+      courier_name: 'Middle Courier',
+      rate: 40,
+      estimated_delivery_days: '3',
+    },
+  ];
+  let cashfreeCreateAmount;
   globalThis.fetch = async (url, options) => {
+    if (String(url).endsWith('/auth/login'))
+      return Response.json({ token: 'test-checkout-shiprocket-token' });
+    if (String(url).includes('/courier/serviceability/'))
+      return Response.json({
+        data: {
+          available_courier_companies: availableCouriers,
+        },
+      });
     if (String(url).endsWith('/payments'))
       return new Response(
         JSON.stringify([
           {
             payment_status: 'SUCCESS',
-            payment_amount: 250,
+            payment_amount: cashfreeCreateAmount,
             cf_payment_id: 'successful-payment',
           },
         ]),
         { status: 200 },
       );
     const body = JSON.parse(options.body);
+    cashfreeCreateAmount = body.order_amount;
     return new Response(
       JSON.stringify({
         order_id: body.order_id,
@@ -2247,7 +2325,42 @@ test('Cashfree product checkout creates an order only after successful payment',
     assert.equal((await Product.findById(product._id)).stock, 3);
     assert.equal(await ProductPaymentAttempt.countDocuments(), 0);
 
-    const checkout = await request(app)
+    const productWithoutWeight = await Product.create({
+      name: 'Product Without Checkout Weight',
+      price: 100,
+      stock: 1,
+    });
+    await request(app)
+      .post('/api/orders/shipping-quotes')
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .send({
+        items: [{ product: productWithoutWeight._id.toString(), quantity: 1 }],
+        shippingAddress: address,
+      })
+      .expect(400)
+      .expect(({ body }) => {
+        assert.equal(body.code, 'SHIPPING_WEIGHT_REQUIRED');
+        assert.match(body.message, /Admin → Products/);
+      });
+
+    const shippingQuote = await request(app)
+      .post('/api/orders/shipping-quotes')
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .send({
+        items: [{ product: product._id.toString(), quantity: 1 }],
+        shippingAddress: address,
+      })
+      .expect(200);
+    assert.equal(shippingQuote.body.couriers[0].id, 7);
+    assert.equal(shippingQuote.body.couriers[0].rate, 25);
+    assert.deepEqual(
+      shippingQuote.body.couriers.map((courier) => courier.id),
+      [7, 8],
+    );
+    assert.deepEqual(shippingQuote.body.couriers[0].badges, ['Lowest price']);
+    assert.deepEqual(shippingQuote.body.couriers[1].badges, ['Fastest']);
+
+    await request(app)
       .post('/api/orders')
       .set({ Authorization: `Bearer ${customer.accessToken}` })
       .send({
@@ -2255,7 +2368,36 @@ test('Cashfree product checkout creates an order only after successful payment',
         shippingAddress: address,
         paymentMethod: 'cashfree',
       })
+      .expect(400)
+      .expect(({ body }) => assert.equal(body.code, 'SHIPPING_OPTION_REQUIRED'));
+    assert.equal((await Product.findById(product._id)).stock, 3);
+
+    await request(app)
+      .post('/api/orders')
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .send({
+        items: [{ product: product._id.toString(), quantity: 1 }],
+        shippingAddress: address,
+        paymentMethod: 'cashfree',
+        shippingCourierId: 7,
+        shippingRate: 26,
+      })
+      .expect(409)
+      .expect(({ body }) => assert.equal(body.code, 'SHIPPING_QUOTE_CHANGED'));
+    assert.equal((await Product.findById(product._id)).stock, 3);
+
+    const checkout = await request(app)
+      .post('/api/orders')
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .send({
+        items: [{ product: product._id.toString(), quantity: 1 }],
+        shippingAddress: address,
+        paymentMethod: 'cashfree',
+        shippingCourierId: 7,
+        shippingRate: 25,
+      })
       .expect(201);
+    assert.equal(cashfreeCreateAmount, 275);
     assert.ok(checkout.body.attemptId);
     assert.equal(checkout.body.order, undefined);
     assert.match(
@@ -2275,10 +2417,66 @@ test('Cashfree product checkout creates an order only after successful payment',
     assert.ok(attempt);
     assert.equal(attempt.items[0].returnWindowDays, 5);
     assert.equal(attempt.items[0].returnable, true);
+    assert.equal(attempt.items[0].shippingWeightKg, 0.35);
+    assert.equal(attempt.subtotal, 250);
+    assert.equal(attempt.shippingCost, 25);
+    assert.equal(attempt.total, 275);
+    assert.equal(attempt.shippingCourier.id, 7);
     await sendWebhook(attempt.providerOrderId, 'FAILED', 'failed-product-payment');
     assert.equal(await Order.countDocuments({ user: customer.user.id }), 0);
     assert.equal((await Product.findById(product._id)).stock, 3);
     assert.equal((await ProductPaymentAttempt.findById(attempt._id)).status, 'failed');
+
+    await Coupon.create({
+      code: 'SAVE10',
+      description: 'Checkout test offer',
+      discountType: 'percent',
+      value: 10,
+      maxDiscountAmount: 10,
+      minimumOrderAmount: 200,
+      usageLimit: 1,
+    });
+    const couponSearch = await request(app)
+      .post('/api/orders/coupons/search')
+      .set('Authorization', `Bearer ${customer.accessToken}`)
+      .send({
+        search: 'SAVE',
+        items: [{ product: product._id.toString(), quantity: 1 }],
+      })
+      .expect(200);
+    assert.equal(couponSearch.body.coupons[0].discountAmount, 10);
+    const couponValidation = await request(app)
+      .post('/api/orders/coupons/validate')
+      .set('Authorization', `Bearer ${customer.accessToken}`)
+      .send({
+        code: 'save10',
+        items: [{ product: product._id.toString(), quantity: 1 }],
+      })
+      .expect(200);
+    assert.equal(couponValidation.body.coupon.discountAmount, 10);
+
+    const failedCouponCheckout = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${customer.accessToken}`)
+      .send({
+        items: [{ product: product._id.toString(), quantity: 1 }],
+        shippingAddress: address,
+        paymentMethod: 'cashfree',
+        shippingCourierId: 7,
+        shippingRate: 25,
+        couponCode: 'SAVE10',
+      })
+      .expect(201);
+    const failedCouponAttempt = await ProductPaymentAttempt.findById(
+      failedCouponCheckout.body.attemptId,
+    );
+    assert.equal((await Coupon.findOne({ code: 'SAVE10' })).reservedCount, 1);
+    await sendWebhook(
+      failedCouponAttempt.providerOrderId,
+      'FAILED',
+      'failed-coupon-payment',
+    );
+    assert.equal((await Coupon.findOne({ code: 'SAVE10' })).reservedCount, 0);
 
     const nextCheckout = await request(app)
       .post('/api/orders')
@@ -2287,11 +2485,17 @@ test('Cashfree product checkout creates an order only after successful payment',
         items: [{ product: product._id.toString(), quantity: 1 }],
         shippingAddress: address,
         paymentMethod: 'cashfree',
+        shippingCourierId: 7,
+        shippingRate: 25,
+        couponCode: 'SAVE10',
       })
       .expect(201);
+    assert.equal(cashfreeCreateAmount, 265);
     const paidAttempt = await ProductPaymentAttempt.findById(
       nextCheckout.body.attemptId,
     );
+    assert.equal(paidAttempt.discountAmount, 10);
+    assert.equal(paidAttempt.total, 265);
     const verification = await request(app)
       .post(`/api/orders/${paidAttempt._id}/verify-payment`)
       .set({ Authorization: `Bearer ${customer.accessToken}` })
@@ -2305,13 +2509,34 @@ test('Cashfree product checkout creates an order only after successful payment',
     assert.equal(orders.length, 1);
     assert.equal(orders[0].paymentStatus, 'paid');
     assert.equal(orders[0].status, 'paid');
+    assert.equal(orders[0].subtotal, 250);
+    assert.equal(orders[0].discountAmount, 10);
+    assert.equal(orders[0].coupon.code, 'SAVE10');
+    assert.equal(orders[0].shippingCost, 25);
+    assert.equal(orders[0].total, 265);
+    const redeemedCoupon = await Coupon.findOne({ code: 'SAVE10' });
+    assert.equal(redeemedCoupon.reservedCount, 0);
+    assert.equal(redeemedCoupon.redeemedCount, 1);
+    assert.equal(orders[0].shipping.selectedCourierId, 7);
+    assert.equal(orders[0].shipping.quotedRate, 25);
     assert.equal(orders[0].items[0].returnWindowDays, 5);
     assert.equal(orders[0].items[0].returnable, true);
+    assert.equal(orders[0].items[0].shippingWeightKg, 0.35);
     assert.equal((await Product.findById(product._id)).stock, 2);
     assert.equal(
       (await ProductPaymentAttempt.findById(paidAttempt._id)).status,
       'order_created',
     );
+    availableCouriers = [];
+    const unavailableQuote = await request(app)
+      .post('/api/orders/shipping-quotes')
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .send({
+        items: [{ product: product._id.toString(), quantity: 1 }],
+        shippingAddress: address,
+      })
+      .expect(200);
+    assert.deepEqual(unavailableQuote.body.couriers, []);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalClientId === undefined) delete process.env.CASHFREE_CLIENT_ID;
@@ -2319,6 +2544,18 @@ test('Cashfree product checkout creates an order only after successful payment',
     if (originalClientSecret === undefined)
       delete process.env.CASHFREE_CLIENT_SECRET;
     else process.env.CASHFREE_CLIENT_SECRET = originalClientSecret;
+    if (originalPickupPostcode === undefined)
+      delete process.env.SHIPROCKET_PICKUP_POSTCODE;
+    else process.env.SHIPROCKET_PICKUP_POSTCODE = originalPickupPostcode;
+    if (originalShippingTare === undefined)
+      delete process.env.SHIPROCKET_PACKAGE_TARE_KG;
+    else process.env.SHIPROCKET_PACKAGE_TARE_KG = originalShippingTare;
+    if (originalShiprocketEmail === undefined)
+      delete process.env.SHIPROCKET_EMAIL;
+    else process.env.SHIPROCKET_EMAIL = originalShiprocketEmail;
+    if (originalShiprocketPassword === undefined)
+      delete process.env.SHIPROCKET_PASSWORD;
+    else process.env.SHIPROCKET_PASSWORD = originalShiprocketPassword;
   }
 });
 
@@ -3172,4 +3409,535 @@ test('admin accounts cannot use customer order, session, or appointment booking 
     .get('/api/admin/orders')
     .set('Authorization', headers.Authorization)
     .expect(200);
+});
+
+test('Shiprocket blocked login is not retried for the same credentials', async () => {
+  const { getShiprocketCouriers } = await import('../src/services/shiprocketService.js');
+  const previousFetch = globalThis.fetch;
+  const previousEnvironment = {
+    SHIPROCKET_EMAIL: process.env.SHIPROCKET_EMAIL,
+    SHIPROCKET_PASSWORD: process.env.SHIPROCKET_PASSWORD,
+    SHIPROCKET_PICKUP_POSTCODE: process.env.SHIPROCKET_PICKUP_POSTCODE,
+  };
+  let loginRequests = 0;
+  process.env.SHIPROCKET_EMAIL = 'blocked-account@example.test';
+  process.env.SHIPROCKET_PASSWORD = 'blocked-account-password';
+  process.env.SHIPROCKET_PICKUP_POSTCODE = '411001';
+  globalThis.fetch = async () => {
+    loginRequests += 1;
+    return Response.json(
+      {
+        message: 'User blocked due to too many failed login attempts.',
+      },
+      { status: 401 },
+    );
+  };
+
+  try {
+    const requestCourierSearch = () => getShiprocketCouriers({
+      deliveryPostalCode: '411002',
+      weight: 1,
+      declaredValue: 250,
+    });
+    const concurrentFailures = await Promise.allSettled([
+      requestCourierSearch(),
+      requestCourierSearch(),
+    ]);
+    assert.ok(concurrentFailures.every(
+      (result) => result.status === 'rejected'
+        && result.reason.code === 'SHIPROCKET_AUTH_BLOCKED',
+    ));
+    await assert.rejects(requestCourierSearch(), {
+      code: 'SHIPROCKET_AUTH_BLOCKED',
+    });
+    assert.equal(loginRequests, 1);
+  } finally {
+    globalThis.fetch = previousFetch;
+    for (const [key, value] of Object.entries(previousEnvironment)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('Shiprocket create-order responses normalize nested IDs and reject incomplete data', async () => {
+  const { createShiprocketOrder } = await import(
+    '../src/services/shiprocketService.js'
+  );
+  const originalFetch = globalThis.fetch;
+  const originalEnv = {
+    SHIPROCKET_EMAIL: process.env.SHIPROCKET_EMAIL,
+    SHIPROCKET_PASSWORD: process.env.SHIPROCKET_PASSWORD,
+    SHIPROCKET_PICKUP_LOCATION: process.env.SHIPROCKET_PICKUP_LOCATION,
+  };
+  let responseBody = {
+    payload: { data: { order_id: 123, shipment_id: 456 } },
+  };
+  process.env.SHIPROCKET_EMAIL = 'shiprocket-response@example.test';
+  process.env.SHIPROCKET_PASSWORD = 'test-shiprocket-password';
+  process.env.SHIPROCKET_PICKUP_LOCATION = 'Test Pickup';
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith('/auth/login'))
+      return Response.json({ token: 'test-shiprocket-token' });
+    if (String(url).endsWith('/orders/create/adhoc'))
+      return Response.json(responseBody);
+    throw new Error(`Unexpected Shiprocket request: ${url}`);
+  };
+
+  try {
+    const order = {
+      _id: 'test-order-id',
+      total: 250,
+      shippingAddress: {
+        fullName: 'Test User',
+        phone: '9876543210',
+        line1: 'Test Road',
+        city: 'Pune',
+        state: 'Maharashtra',
+        postalCode: '411001',
+      },
+      items: [{
+        product: 'test-product-id',
+        name: 'Test Product',
+        quantity: 1,
+        price: 250,
+      }],
+    };
+    const normalized = await createShiprocketOrder(order, {
+      weight: 1,
+      length: 20,
+      breadth: 15,
+      height: 10,
+    });
+    assert.equal(normalized.order_id, 123);
+    assert.equal(normalized.shipment_id, 456);
+
+    responseBody = { message: 'Order created, but IDs were omitted' };
+    await assert.rejects(
+      createShiprocketOrder(order, {
+        weight: 1,
+        length: 20,
+        breadth: 15,
+        height: 10,
+      }),
+      {
+        code: 'SHIPROCKET_INVALID_RESPONSE',
+        message: /Order created, but IDs were omitted/,
+      },
+    );
+    responseBody = {
+      message: 'Wrong Pickup location entered. Please choose one location.',
+    };
+    await assert.rejects(
+      createShiprocketOrder(order, {
+        weight: 1,
+        length: 20,
+        breadth: 15,
+        height: 10,
+      }),
+      {
+        code: 'SHIPROCKET_INVALID_PICKUP_LOCATION',
+        message: /exact pickup location name/,
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('Shiprocket AWB assignment normalizes success and preserves provider failures', async () => {
+  const { assignShiprocketCourier } = await import(
+    '../src/services/shiprocketService.js'
+  );
+  const previousFetch = globalThis.fetch;
+  const previousEnvironment = {
+    SHIPROCKET_EMAIL: process.env.SHIPROCKET_EMAIL,
+    SHIPROCKET_PASSWORD: process.env.SHIPROCKET_PASSWORD,
+  };
+  let responseBody = {
+    awb_assign_status: 1,
+    response: {
+      data: { awb_code: 'TEST-AWB-456', courier_name: 'Test Courier' },
+    },
+  };
+  process.env.SHIPROCKET_EMAIL = 'shiprocket-awb@example.test';
+  process.env.SHIPROCKET_PASSWORD = 'test-shiprocket-password';
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith('/auth/login'))
+      return Response.json({ token: 'test-shiprocket-token' });
+    if (String(url).endsWith('/courier/assign/awb'))
+      return Response.json(responseBody);
+    throw new Error(`Unexpected Shiprocket request: ${url}`);
+  };
+
+  try {
+    const assigned = await assignShiprocketCourier(456, 58);
+    assert.equal(assigned.awb_code, 'TEST-AWB-456');
+    assert.equal(assigned.courier_name, 'Test Courier');
+
+    responseBody = {
+      response: { message: 'Courier service is not available for this shipment' },
+    };
+    await assert.rejects(
+      assignShiprocketCourier(456, 58),
+      {
+        code: 'SHIPROCKET_AWB_FAILED',
+        message: /Courier service is not available/,
+      },
+    );
+
+    responseBody = { success: true, message: 'We are processing your request' };
+    await assert.rejects(
+      assignShiprocketCourier(456, 58),
+      {
+        code: 'SHIPROCKET_AWB_PENDING',
+        message: /shipment order already exists/,
+      },
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    for (const [key, value] of Object.entries(previousEnvironment)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('paid customer checkout automatically books shipment visible to admin', async () => {
+  const customer = await registerUser('automated-checkout-customer@example.com');
+  const administrator = await registerUser('automated-checkout-admin@example.com');
+  await User.updateOne(
+    { _id: administrator.user.id },
+    { $set: { role: 'admin' } },
+  );
+  const product = await Product.create({
+    name: 'Automated Checkout Product',
+    price: 250,
+    stock: 2,
+    shippingWeightKg: 0.35,
+  });
+  const address = {
+    fullName: 'Test Customer',
+    phone: '9876543210',
+    line1: 'Test Road',
+    city: 'Pune',
+    state: 'Maharashtra',
+    postalCode: '411001',
+  };
+  const env = {
+    SHIPROCKET_AUTO_BOOK_PAID_ORDERS: 'true',
+    SHIPROCKET_COURIER_SELECTION: 'lowest_cost',
+    SHIPROCKET_PACKAGE_LENGTH_CM: '25',
+    SHIPROCKET_PACKAGE_BREADTH_CM: '20',
+    SHIPROCKET_PACKAGE_HEIGHT_CM: '10',
+    SHIPROCKET_PACKAGE_TARE_KG: '0.2',
+    SHIPROCKET_EMAIL: 'shiprocket@example.test',
+    SHIPROCKET_PASSWORD: 'test-shiprocket-password',
+    SHIPROCKET_PICKUP_LOCATION: 'Test Pickup',
+    SHIPROCKET_PICKUP_POSTCODE: '411001',
+    CASHFREE_CLIENT_ID: 'test-client-id',
+    CASHFREE_CLIENT_SECRET: 'test-cashfree-secret',
+  };
+  const originalEnv = Object.fromEntries(
+    Object.keys(env).map((key) => [key, process.env[key]]),
+  );
+  const originalFetch = globalThis.fetch;
+  const shiprocketRequests = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/pg/orders/')) {
+      return Response.json([{
+        payment_status: 'SUCCESS',
+        payment_amount: 300,
+        cf_payment_id: 'test-paid-checkout',
+      }]);
+    }
+    if (requestUrl.endsWith('/pg/orders')) {
+      return Response.json({
+        order_id: JSON.parse(options.body).order_id,
+        payment_session_id: 'test-payment-session',
+      });
+    }
+    shiprocketRequests.push(requestUrl);
+    if (requestUrl.endsWith('/auth/login'))
+      return Response.json({ token: 'test-shiprocket-token' });
+    if (requestUrl.includes('/courier/serviceability/'))
+      return Response.json({
+        data: {
+          available_courier_companies: [{
+            courier_company_id: 22,
+            courier_name: 'Test Courier',
+            rate: 50,
+            estimated_delivery_days: 4,
+          }],
+        },
+      });
+    if (requestUrl.endsWith('/orders/create/adhoc'))
+      return Response.json({
+        data: { order_id: 123, shipment_id: 456 },
+      });
+    if (requestUrl.endsWith('/courier/assign/awb'))
+      return Response.json({
+        response: {
+          data: { awb_code: 'TEST-AWB-456', courier_name: 'Test Courier' },
+        },
+      });
+    if (requestUrl.endsWith('/courier/generate/label'))
+      return Response.json({ label_url: 'https://labels.example.test/test.pdf' });
+    throw new Error(`Unexpected Shiprocket request: ${requestUrl}`);
+  };
+
+  try {
+    Object.assign(process.env, env);
+    const checkout = await request(app)
+      .post('/api/orders')
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .send({
+        items: [{ product: String(product._id), quantity: 1 }],
+        shippingAddress: address,
+        paymentMethod: 'cashfree',
+        shippingCourierId: 22,
+        shippingRate: 50,
+      })
+      .expect(201);
+    const payment = await request(app)
+      .post(`/api/orders/${checkout.body.attemptId}/verify-payment`)
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .expect(200);
+    assert.equal(payment.body.paymentStatus, 'paid');
+    assert.equal(payment.body.order.status, 'paid');
+    assert.equal(payment.body.order.total, 300);
+    assert.equal(payment.body.order.shippingCost, 50);
+
+    let bookedOrder;
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      bookedOrder = await Order.findById(payment.body.order._id);
+      if (['booked', 'failed'].includes(bookedOrder.shipping.autoBookingStatus))
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(bookedOrder.shipping.autoBookingStatus, 'booked');
+    assert.equal(bookedOrder.status, 'processing');
+    assert.equal(bookedOrder.tracking.trackingNumber, 'TEST-AWB-456');
+    assert.equal(bookedOrder.shipping.labelUrl, 'https://labels.example.test/test.pdf');
+    assert.ok(shiprocketRequests.some((url) => url.endsWith('/orders/create/adhoc')));
+
+    const adminOrders = await request(app)
+      .get('/api/admin/orders')
+      .set({ Authorization: `Bearer ${administrator.accessToken}` })
+      .expect(200);
+    const adminOrder = adminOrders.body.orders.find(
+      (order) => order._id === String(bookedOrder._id),
+    );
+    assert.ok(adminOrder);
+    assert.equal(adminOrder.status, 'processing');
+    assert.equal(adminOrder.total, 300);
+    assert.equal(adminOrder.shippingCost, 50);
+    assert.equal(adminOrder.shipping.autoBookingStatus, 'booked');
+    assert.equal(adminOrder.tracking.trackingNumber, 'TEST-AWB-456');
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('automatic Shiprocket booking selects the configured courier and saves shipment details', async () => {
+  const customer = await registerUser('automatic-shipment@example.com');
+  const product = await Product.create({
+    name: 'Automatic Shipment Product',
+    price: 250,
+    stock: 1,
+  });
+  const order = await Order.create({
+    user: customer.user.id,
+    items: [{
+      product: product._id,
+      name: product.name,
+      price: 250,
+      quantity: 2,
+      shippingWeightKg: 0.4,
+    }],
+    total: 500,
+    shippingAddress: {
+      fullName: 'Test User',
+      phone: '9876543210',
+      line1: 'Test Road',
+      city: 'Pune',
+      state: 'Maharashtra',
+      postalCode: '411001',
+    },
+    paymentMethod: 'cashfree',
+    paymentStatus: 'paid',
+    status: 'paid',
+  });
+
+  const env = {
+    SHIPROCKET_AUTO_BOOK_PAID_ORDERS: 'true',
+    SHIPROCKET_COURIER_SELECTION: 'lowest_cost',
+    SHIPROCKET_PACKAGE_LENGTH_CM: '25',
+    SHIPROCKET_PACKAGE_BREADTH_CM: '20',
+    SHIPROCKET_PACKAGE_HEIGHT_CM: '10',
+    SHIPROCKET_PACKAGE_TARE_KG: '0.2',
+    SHIPROCKET_EMAIL: 'shiprocket@example.test',
+    SHIPROCKET_PASSWORD: 'test-password',
+    SHIPROCKET_PICKUP_LOCATION: 'Test Pickup',
+    SHIPROCKET_PICKUP_POSTCODE: '411001',
+  };
+  const originalEnv = Object.fromEntries(
+    Object.keys(env).map((key) => [key, process.env[key]]),
+  );
+  const originalFetch = globalThis.fetch;
+  let createdShipment;
+  let assignedCourier;
+  globalThis.fetch = async (url, options = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith('/auth/login'))
+      return Response.json({ token: 'test-shiprocket-token' });
+    if (requestUrl.includes('/courier/serviceability/'))
+      return Response.json({
+        data: {
+          available_courier_companies: [
+            {
+              courier_company_id: 11,
+              courier_name: 'Fast Courier',
+              rate: 100,
+              estimated_delivery_days: 1,
+            },
+            {
+              courier_company_id: 22,
+              courier_name: 'Low Cost Courier',
+              rate: 50,
+              estimated_delivery_days: 4,
+            },
+          ],
+        },
+      });
+    if (requestUrl.endsWith('/orders/create/adhoc')) {
+      createdShipment = JSON.parse(options.body);
+      return Response.json({ order_id: 123, shipment_id: 456 });
+    }
+    if (requestUrl.endsWith('/courier/assign/awb')) {
+      assignedCourier = JSON.parse(options.body).courier_id;
+      return Response.json({
+        response: { data: { awb_code: 'TEST-AWB-456', courier_name: 'Low Cost Courier' } },
+      });
+    }
+    if (requestUrl.endsWith('/courier/generate/label'))
+      return Response.json({ label_url: 'https://labels.example.test/test.pdf' });
+    throw new Error(`Unexpected Shiprocket request: ${requestUrl}`);
+  };
+
+  try {
+    Object.assign(process.env, env);
+    const { automatePaidOrderShipping } = await import(
+      '../src/services/automaticOrderShippingService.js'
+    );
+    assert.equal(await automatePaidOrderShipping(order._id), true);
+
+    const bookedOrder = await Order.findById(order._id);
+    assert.equal(bookedOrder.shipping.autoBookingStatus, 'booked');
+    assert.equal(bookedOrder.shipping.package.weight, 1);
+    assert.equal(bookedOrder.shipping.package.length, 25);
+    assert.equal(bookedOrder.shipping.selectedCourierId, 22);
+    assert.equal(assignedCourier, 22);
+    assert.equal(createdShipment.weight, 1);
+    assert.equal(createdShipment.length, 25);
+    assert.equal(bookedOrder.tracking.trackingNumber, 'TEST-AWB-456');
+    assert.equal(bookedOrder.shipping.labelUrl, 'https://labels.example.test/test.pdf');
+    assert.equal(bookedOrder.status, 'processing');
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('automatic Shiprocket booking falls back to manual fulfillment without product weight', async () => {
+  const customer = await registerUser('missing-shipping-weight@example.com');
+  const product = await Product.create({
+    name: 'Product Without Shipping Weight',
+    price: 100,
+    stock: 1,
+  });
+  const order = await Order.create({
+    user: customer.user.id,
+    items: [{
+      product: product._id,
+      name: product.name,
+      price: 100,
+      quantity: 1,
+    }],
+    total: 100,
+    shippingAddress: {
+      fullName: 'Test User',
+      phone: '9876543210',
+      line1: 'Test Road',
+      city: 'Pune',
+      state: 'Maharashtra',
+      postalCode: '411001',
+    },
+    paymentMethod: 'cashfree',
+    paymentStatus: 'paid',
+    status: 'paid',
+  });
+  const originalEnv = {
+    enabled: process.env.SHIPROCKET_AUTO_BOOK_PAID_ORDERS,
+    length: process.env.SHIPROCKET_PACKAGE_LENGTH_CM,
+    breadth: process.env.SHIPROCKET_PACKAGE_BREADTH_CM,
+    height: process.env.SHIPROCKET_PACKAGE_HEIGHT_CM,
+    tare: process.env.SHIPROCKET_PACKAGE_TARE_KG,
+  };
+
+  try {
+    process.env.SHIPROCKET_AUTO_BOOK_PAID_ORDERS = 'true';
+    process.env.SHIPROCKET_PACKAGE_LENGTH_CM = '25';
+    process.env.SHIPROCKET_PACKAGE_BREADTH_CM = '20';
+    process.env.SHIPROCKET_PACKAGE_HEIGHT_CM = '10';
+    process.env.SHIPROCKET_PACKAGE_TARE_KG = '0.2';
+    const { automatePaidOrderShipping } = await import(
+      '../src/services/automaticOrderShippingService.js'
+    );
+    assert.equal(await automatePaidOrderShipping(order._id), false);
+    const failedOrder = await Order.findById(order._id);
+    assert.equal(failedOrder.shipping.autoBookingStatus, 'failed');
+    assert.match(failedOrder.shipping.autoBookingError, /Add shipping weight/);
+    assert.equal(failedOrder.shipping.shiprocketOrderId, '');
+  } finally {
+    process.env.SHIPROCKET_AUTO_BOOK_PAID_ORDERS = originalEnv.enabled;
+    process.env.SHIPROCKET_PACKAGE_LENGTH_CM = originalEnv.length;
+    process.env.SHIPROCKET_PACKAGE_BREADTH_CM = originalEnv.breadth;
+    process.env.SHIPROCKET_PACKAGE_HEIGHT_CM = originalEnv.height;
+    process.env.SHIPROCKET_PACKAGE_TARE_KG = originalEnv.tare;
+  }
+});
+
+test('Shiprocket courier selection supports lowest-cost, fastest, and recommended strategies', async () => {
+  const { selectShiprocketCourier } = await import('../src/config/shipping.js');
+  const couriers = [
+    {
+      courier_company_id: 1,
+      rate: 100,
+      estimated_delivery_days: 1,
+    },
+    {
+      courier_company_id: 2,
+      rate: 50,
+      estimated_delivery_days: 4,
+      is_recommended: true,
+    },
+  ];
+
+  assert.equal(selectShiprocketCourier(couriers, 'lowest_cost'), couriers[1]);
+  assert.equal(selectShiprocketCourier(couriers, 'fastest'), couriers[0]);
+  assert.equal(selectShiprocketCourier(couriers, 'recommended'), couriers[1]);
+  assert.equal(selectShiprocketCourier([], 'lowest_cost'), null);
 });

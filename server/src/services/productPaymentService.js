@@ -2,6 +2,11 @@ import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import ProductPaymentAttempt from "../models/ProductPaymentAttempt.js";
 import { notifyOrderConfirmation } from "./emailNotificationService.js";
+import { automatePaidOrderShipping } from "./automaticOrderShippingService.js";
+import {
+  redeemCouponReservation,
+  releaseCouponReservation,
+} from "./couponService.js";
 
 function queueOrderConfirmationEmail(orderId) {
   void notifyOrderConfirmation(orderId).catch((error) =>
@@ -37,6 +42,7 @@ export async function releaseProductPaymentAttempt(attempt, status) {
   );
   if (!claimed) return false;
   await restoreInventory(claimed);
+  await releaseCouponReservation(claimed);
   await ProductPaymentAttempt.updateOne(
     { _id: claimed._id, status: "releasing" },
     {
@@ -87,6 +93,7 @@ async function reserveInventory(items) {
 export async function createOrderForPaidAttempt(attempt, paymentId) {
   if (attempt.order) {
     const existingOrder = await Order.findById(attempt.order);
+    await redeemCouponReservation(attempt);
     if (existingOrder) queueOrderConfirmationEmail(existingOrder._id);
     return existingOrder;
   }
@@ -94,6 +101,7 @@ export async function createOrderForPaidAttempt(attempt, paymentId) {
     "payment.providerOrderId": attempt.providerOrderId,
   });
   if (existingOrder) {
+    await redeemCouponReservation(attempt);
     await ProductPaymentAttempt.updateOne(
       { _id: attempt._id },
       {
@@ -146,11 +154,30 @@ export async function createOrderForPaidAttempt(attempt, paymentId) {
 
   let order;
   try {
+    const subtotal = claimed.subtotal || claimed.items.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0,
+    );
+    const shippingCost = claimed.shippingCost || 0;
     order = await Order.create({
       user: claimed.user,
       items: claimed.items,
+      subtotal,
+      discountAmount: claimed.discountAmount || 0,
+      coupon: {
+        code: claimed.coupon?.code || "",
+        discountType: claimed.coupon?.discountType || null,
+        value: claimed.coupon?.value ?? null,
+      },
+      shippingCost,
       total: claimed.total,
       shippingAddress: claimed.shippingAddress,
+      shipping: {
+        selectedCourierId: claimed.shippingCourier?.id || undefined,
+        selectedCourierName: claimed.shippingCourier?.name || "",
+        quotedRate: shippingCost,
+        estimatedDays: claimed.shippingCourier?.estimatedDays || "",
+      },
       paymentMethod: "cashfree",
       paymentStatus: "paid",
       status: "paid",
@@ -175,11 +202,18 @@ export async function createOrderForPaidAttempt(attempt, paymentId) {
     );
     throw error;
   }
+  await redeemCouponReservation(claimed);
   await ProductPaymentAttempt.updateOne(
     { _id: claimed._id, status: "processing" },
     { $set: { status: "order_created", order: order._id } },
   );
   queueOrderConfirmationEmail(order._id);
+  void automatePaidOrderShipping(order._id).catch((error) =>
+    console.error("Could not start automatic Shiprocket booking", {
+      orderId: String(order._id),
+      message: error.message,
+    }),
+  );
   return order;
 }
 

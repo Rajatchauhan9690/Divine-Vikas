@@ -78,7 +78,21 @@ export default function Shop() {
       </div>
       {error && <p className="notice error">{error}</p>}
       {loading ? (
-        <div className="loading-state">Preparing your collection…</div>
+        <div className="product-grid shop-skeleton-grid" role="status" aria-label="Loading fragrances">
+          {Array.from({ length: 8 }, (_, index) => (
+            <article className="product-card shop-skeleton-card" key={index}>
+              <div className="shop-skeleton shop-skeleton-image" />
+              <div className="product-info">
+                <div className="shop-skeleton shop-skeleton-title" />
+                <div className="shop-skeleton shop-skeleton-description" />
+                <div className="product-bottom">
+                  <div className="shop-skeleton shop-skeleton-price" />
+                  <div className="shop-skeleton shop-skeleton-rating" />
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
       ) : products.length ? (
         <div className="product-grid">
           {products.map((p) => (

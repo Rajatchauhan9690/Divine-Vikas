@@ -13,8 +13,10 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Suspense } from "react";
 import { useAuth } from "../features/auth/AuthContext";
 import { useCart } from "../features/cart/CartContext";
+import RouteLoading from "./RouteLoading";
 export default function Layout() {
   const [open, setOpen] = useState(false);
   const { user, logout } = useAuth();
@@ -161,7 +163,9 @@ export default function Layout() {
           key={isAuthPage ? "auth-pages" : pathname}
           className="page-transition"
         >
-          <Outlet />
+          <Suspense fallback={<RouteLoading />}>
+            <Outlet />
+          </Suspense>
         </div>
       </main>
       {!isAuthPage && !isInvitationPage && (

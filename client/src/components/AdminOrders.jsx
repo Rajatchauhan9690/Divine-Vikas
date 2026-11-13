@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { api } from "../services/api";
 import AdminToast from "./AdminToast";
+import AdminCardSkeleton from "./AdminCardSkeleton";
 const statuses = ["pending", "paid", "processing", "shipped", "delivered"];
 const orderFilters = [
   { label: "All", value: "" },
@@ -21,6 +22,7 @@ export default function AdminOrders() {
   const [orders, setOrders] = useState([]),
     [toast, setToast] = useState(null),
     [busy, setBusy] = useState(""),
+    [loading, setLoading] = useState(true),
     [selectedOrderId, setSelectedOrderId] = useState(""),
     [page, setPage] = useState(1),
     [search, setSearch] = useState(""),
@@ -43,6 +45,7 @@ export default function AdminOrders() {
     ordersRequest.current?.abort();
     const controller = new AbortController();
     ordersRequest.current = controller;
+    setLoading(true);
     try {
       const { data } = await api.get("/admin/orders", {
         params: { page: nextPage, limit: 10, search: query, status },
@@ -61,7 +64,10 @@ export default function AdminOrders() {
       });
       return false;
     } finally {
-      if (ordersRequest.current === controller) ordersRequest.current = null;
+      if (ordersRequest.current === controller) {
+        ordersRequest.current = null;
+        setLoading(false);
+      }
     }
   }, []);
   useEffect(() => {
@@ -231,7 +237,7 @@ export default function AdminOrders() {
         </div>
       </div>
       <AdminToast toast={toast} onDismiss={dismissToast} />
-      {orders.length === 0 && (
+      {!loading && orders.length === 0 && (
         <p className="notice">
           {search.trim() ? "No orders match your search." : "No orders found."}
         </p>
@@ -262,7 +268,9 @@ export default function AdminOrders() {
         </div>
       ) : (
         <div className="admin-order-card-grid">
-          {orders.map((order) => (
+          {loading ? (
+            <AdminCardSkeleton count={6} layout="grid" />
+          ) : orders.map((order) => (
             <button
               type="button"
               className="admin-order-card"
@@ -294,7 +302,7 @@ export default function AdminOrders() {
           ))}
         </div>
       )}
-      {!selectedOrderId && pagination.total > 0 && (
+      {!loading && !selectedOrderId && pagination.total > 0 && (
         <div className="admin-pagination">
           <button
             className="btn btn-outline"
@@ -349,7 +357,16 @@ function OrderRow({
   async function searchCouriers() {
     const choices = await findCouriers(order, packageData);
     setCouriers(choices);
-    setCourierId(choices[0] ? String(choices[0].id) : "");
+    const savedCourier = choices.find(
+      (courier) => courier.id === order.shipping?.selectedCourierId,
+    );
+    setCourierId(
+      savedCourier
+        ? String(savedCourier.id)
+        : choices[0]
+          ? String(choices[0].id)
+          : "",
+    );
   }
   return (
     <article className="admin-order-row">
@@ -364,6 +381,18 @@ function OrderRow({
             {order.shippingAddress?.city}, {order.shippingAddress?.state} ·{" "}
             {new Date(order.createdAt).toLocaleDateString()}
           </p>
+          {Number(order.shippingCost) > 0 && (
+            <small>
+              Items ₹{Number(order.subtotal).toFixed(2)}
+              {Number(order.discountAmount) > 0 &&
+                ` − coupon ${order.coupon?.code || ""} ₹${Number(order.discountAmount).toFixed(2)}`}
+              {" + delivery ₹"}
+              {Number(order.shippingCost).toFixed(2)}
+              {order.shipping?.selectedCourierName
+                ? ` (${order.shipping.selectedCourierName})`
+                : ""}
+            </small>
+          )}
         </div>
         <span className={`admin-order-card-status status-${order.status}`}>
           {order.status}
@@ -532,6 +561,21 @@ function OrderRow({
             ["paid", "processing"].includes(order.status) && (
               <div className="admin-shiprocket">
                 <b>Ship with Shiprocket</b>
+                {order.shipping?.autoBookingStatus === "processing" && (
+                  <small>Automatic Shiprocket booking is in progress.</small>
+                )}
+                {order.shipping?.autoBookingStatus === "failed" && (
+                  <p className="notice error" role="alert">
+                    Automatic booking failed: {order.shipping.autoBookingError}
+                    {" "}You can complete shipping manually below.
+                  </p>
+                )}
+                {order.shipping?.autoBookingStatus === "booked" && (
+                  <small>
+                    Shipment booked automatically. Pack the parcel and hand it
+                    to the courier for pickup.
+                  </small>
+                )}
                 {order.shipping?.labelUrl ? (
                   <a
                     className="text-link"

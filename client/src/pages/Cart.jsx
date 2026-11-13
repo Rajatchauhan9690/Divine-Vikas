@@ -37,6 +37,71 @@ export default function Cart() {
   const [address, setAddress] = useState(emptyAddress);
   const [newAddress, setNewAddress] = useState(false);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [shippingQuote, setShippingQuote] = useState(null);
+  const [selectedCourierId, setSelectedCourierId] = useState("");
+  const [couponSearch, setCouponSearch] = useState("");
+  const [couponSuggestions, setCouponSuggestions] = useState([]);
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponBusy, setCouponBusy] = useState(false);
+  const [couponMessage, setCouponMessage] = useState("");
+  const couponItems = items.map((item) => ({
+    product: item._id,
+    quantity: item.qty,
+  }));
+  const couponItemsKey = JSON.stringify(couponItems);
+  const currentCoupon =
+    appliedCoupon?.itemsKey === couponItemsKey ? appliedCoupon : null;
+  const deliveryAddress =
+    (!newAddress && addresses.find((saved) => saved._id === selected)) ||
+    address;
+  const shippingQuoteKey = JSON.stringify({
+    postalCode: deliveryAddress.postalCode || "",
+    items: items.map((item) => ({
+      product: item._id,
+      quantity: item.qty,
+      price: item.price,
+    })),
+  });
+  const currentShippingQuote =
+    shippingQuote?.key === shippingQuoteKey ? shippingQuote : null;
+  const selectedCourier = currentShippingQuote?.couriers.find(
+    (courier) => String(courier.id) === selectedCourierId,
+  );
+  const selectedCourierLabel = selectedCourier
+    ? selectedCourier.badges?.includes("Fastest") &&
+      !selectedCourier.badges?.includes("Lowest price")
+      ? "Fast delivery"
+      : selectedCourier.badges?.includes("Fastest")
+        ? "Lowest price · Fast delivery"
+        : "Lowest price"
+    : "";
+  const orderTotal = Number(
+    (total - (currentCoupon?.discountAmount || 0) + (selectedCourier?.rate || 0)).toFixed(2),
+  );
+  useEffect(() => {
+    const search = couponSearch.trim();
+    if (search.length < 2 || !items.length || currentCoupon) {
+      setCouponSuggestions([]);
+      return undefined;
+    }
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      try {
+        const { data } = await api.post("/orders/coupons/search", {
+          search,
+          items: couponItems,
+        });
+        if (active) setCouponSuggestions(data.coupons || []);
+      } catch {
+        if (active)
+          setCouponMessage("Could not search coupons. Please try again.");
+      }
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [couponSearch, couponItemsKey, Boolean(currentCoupon)]);
   useEffect(() => {
     if (!showPaymentExitConfirm) return undefined;
     const handleKeyDown = (event) => {
@@ -71,6 +136,28 @@ export default function Cart() {
   function setField(k, v) {
     setAddress((a) => ({ ...a, [k]: v }));
   }
+  async function applyCoupon(code = couponSearch) {
+    const normalizedCode = code.trim().toUpperCase();
+    if (!normalizedCode) return;
+    setCouponBusy(true);
+    setCouponMessage("");
+    try {
+      const { data } = await api.post("/orders/coupons/validate", {
+        code: normalizedCode,
+        items: couponItems,
+      });
+      setAppliedCoupon({ ...data.coupon, itemsKey: couponItemsKey });
+      setCouponSearch(data.coupon.code);
+      setCouponSuggestions([]);
+    } catch (error) {
+      setAppliedCoupon(null);
+      setCouponMessage(
+        error.response?.data?.message || "This coupon could not be applied.",
+      );
+    } finally {
+      setCouponBusy(false);
+    }
+  }
   async function checkout(e) {
     e.preventDefault();
     if (!user) return nav("/login", { state: { from: "/cart" } });
@@ -88,7 +175,30 @@ export default function Cart() {
     setBusy(true);
     setMessage("");
     try {
-      let ship = addresses.find((a) => a._id === selected);
+      let ship =
+        (!newAddress && addresses.find((saved) => saved._id === selected)) ||
+        address;
+      if (!currentShippingQuote || !currentShippingQuote.couriers.length) {
+        const { data } = await api.post("/orders/shipping-quotes", {
+          items: items.map((item) => ({
+            product: item._id,
+            quantity: item.qty,
+          })),
+          shippingAddress: ship,
+        });
+        setShippingQuote({ key: shippingQuoteKey, couriers: data.couriers });
+        const defaultCourier =
+          data.couriers.find((courier) =>
+            courier.badges?.includes("Lowest price"),
+          ) || data.couriers[0];
+        setSelectedCourierId(defaultCourier ? String(defaultCourier.id) : "");
+        return;
+      }
+      if (!selectedCourier) {
+        setMessage("Choose a delivery option before continuing to payment.");
+        return;
+      }
+      ship = addresses.find((saved) => saved._id === selected);
       if (newAddress || !ship) {
         if (addresses.length < 3) {
           const { data } = await api.post("/profile/addresses", {
@@ -107,22 +217,39 @@ export default function Cart() {
         items: items.map((i) => ({ product: i._id, quantity: i.qty })),
         shippingAddress: ship,
         paymentMethod: "cashfree",
+        shippingCourierId: selectedCourier.id,
+        shippingRate: selectedCourier.rate,
+        couponCode: currentCoupon?.code || "",
       });
       if (!data.payment?.paymentSessionId)
         throw new Error("Cashfree did not return a payment session.");
+      if (data.payment.coupon)
+        setAppliedCoupon({ ...data.payment.coupon, itemsKey: couponItemsKey });
       setPayment({
         ...data.payment,
         attemptId: data.attemptId,
-        total,
+        total: data.payment.total,
         phone: ship.phone,
         cartProductIds: items.map((item) => item._id),
-        summaryDescription: items
-          .map((item) => `${item.name} × ${item.qty}`)
-          .join(", "),
+        summaryDescription: [
+          ...items.map((item) => `${item.name} × ${item.qty}`),
+          ...(data.payment.coupon
+            ? [`Coupon ${data.payment.coupon.code} −₹${data.payment.discountAmount.toFixed(2)}`]
+            : []),
+          `Delivery (${selectedCourierLabel}) ₹${selectedCourier.rate.toFixed(2)}`,
+        ].join(", "),
       });
       setCheckoutActive(true);
       setMessage("");
     } catch (e) {
+      if (
+        ["SHIPPING_QUOTE_CHANGED", "SHIPPING_OPTION_UNAVAILABLE"].includes(
+          e.response?.data?.code,
+        )
+      ) {
+        setShippingQuote(null);
+        setSelectedCourierId("");
+      }
       setMessage(
         e.response?.data?.message ||
           e.message ||
@@ -154,6 +281,24 @@ export default function Cart() {
           value: Number(data.order.total).toLocaleString("en-IN", {
             style: "currency",
             currency: "INR",
+          }),
+        },
+        ...(Number(data.order.discountAmount) > 0
+          ? [
+              {
+                label: `Coupon${data.order.coupon?.code ? ` (${data.order.coupon.code})` : ""}`,
+                value: `−${Number(data.order.discountAmount).toLocaleString("en-IN", {
+                  style: "currency",
+                  currency: "INR",
+                })}`,
+              },
+            ]
+          : []),
+        {
+          label: "Delivery",
+          value: Number(data.order.shippingCost || 0).toLocaleString("en-IN", {
+          style: "currency",
+          currency: "INR",
           }),
         },
       ]);
@@ -457,13 +602,173 @@ export default function Cart() {
               <span>Subtotal</span>
               <b>₹{total}</b>
             </div>
+            <section className="cart-coupon" aria-label="Apply a coupon">
+              <label htmlFor="cart-coupon-search">Coupon code</label>
+              {currentCoupon ? (
+                <div className="cart-coupon-applied">
+                  <span>
+                    <b>{currentCoupon.code}</b>
+                    <small>Coupon applied</small>
+                  </span>
+                  <button
+                    type="button"
+                    className="text-link"
+                    onClick={() => {
+                      setAppliedCoupon(null);
+                      setCouponSearch("");
+                      setCouponMessage("");
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="cart-coupon-entry">
+                    <input
+                      id="cart-coupon-search"
+                      value={couponSearch}
+                      autoComplete="off"
+                      placeholder="Search or enter a code"
+                      onChange={(event) => {
+                        setCouponSearch(event.target.value.toUpperCase());
+                        setCouponMessage("");
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      disabled={couponBusy || !couponSearch.trim()}
+                      onClick={() => applyCoupon()}
+                    >
+                      {couponBusy ? "Checking…" : "Apply"}
+                    </button>
+                  </div>
+                  {couponSuggestions.length > 0 && (
+                    <div className="cart-coupon-suggestions">
+                      {couponSuggestions.map((coupon) => (
+                        <button
+                          type="button"
+                          key={coupon.code}
+                          onClick={() => applyCoupon(coupon.code)}
+                        >
+                          <span>
+                            <b>{coupon.code}</b>
+                            <small>
+                              {coupon.description ||
+                                (coupon.discountType === "percent"
+                                  ? `${coupon.value}% off`
+                                  : `₹${coupon.value} off`)}
+                            </small>
+                          </span>
+                          <strong>Save ₹{coupon.discountAmount.toFixed(2)}</strong>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {couponMessage && (
+                    <small className="cart-coupon-message" role="status">
+                      {couponMessage}
+                    </small>
+                  )}
+                </>
+              )}
+            </section>
+            {currentCoupon && (
+              <div className="cart-coupon-discount">
+                <span>Coupon discount</span>
+                <b>−₹{currentCoupon.discountAmount.toFixed(2)}</b>
+              </div>
+            )}
             <div>
               <span>Shipping</span>
-              <span>Calculated at checkout</span>
+              <span>
+                {selectedCourier
+                  ? `${selectedCourierLabel} · ₹${selectedCourier.rate.toFixed(2)}`
+                  : currentShippingQuote
+                    ? "Choose delivery"
+                    : "Shown after you continue"}
+              </span>
             </div>
+            {busy && !currentShippingQuote && !payment && (
+              <div className="delivery-loading" role="status" aria-live="polite">
+                <span className="delivery-loading-spinner" aria-hidden="true" />
+                <span>Checking delivery options for your location…</span>
+              </div>
+            )}
+            {currentShippingQuote && currentShippingQuote.couriers.length > 0 && (
+              <section className="delivery-options" aria-labelledby="delivery-options-title">
+                <div className="delivery-options-heading">
+                  <h3 id="delivery-options-title">Choose delivery</h3>
+                  <span>{currentShippingQuote.couriers.length} options</span>
+                </div>
+                {currentShippingQuote.couriers.map((courier) => {
+                  const isSelected = selectedCourierId === String(courier.id);
+                  const isLowest = courier.badges?.includes("Lowest price");
+                  const isFastest = courier.badges?.includes("Fastest");
+                  return (
+                    <label
+                      className={`delivery-option-card${isSelected ? " is-selected" : ""}`}
+                      key={courier.id}
+                    >
+                      <input
+                        type="radio"
+                        name="shippingCourier"
+                        value={courier.id}
+                        checked={isSelected}
+                        onChange={() => setSelectedCourierId(String(courier.id))}
+                      />
+                      <span className="delivery-option-main">
+                        <span className="delivery-option-name">
+                          {isLowest && isFastest
+                            ? "Lowest price · Fast delivery"
+                            : isFastest
+                              ? "Fast delivery"
+                              : "Lowest price"}
+                        </span>
+                        <span className="delivery-option-meta">
+                          {courier.estimatedDays
+                            ? `Estimated ${courier.estimatedDays} days`
+                            : "Delivery estimate unavailable"}
+                        </span>
+                      </span>
+                      <span className="delivery-option-price">
+                        ₹{courier.rate.toFixed(2)}
+                      </span>
+                    </label>
+                  );
+                })}
+              </section>
+            )}
+            {currentShippingQuote && !currentShippingQuote.couriers.length && (
+              <div className="delivery-unavailable" role="status">
+                <span className="delivery-unavailable-icon" aria-hidden="true">
+                  !
+                </span>
+                <div className="delivery-unavailable-content">
+                  <b>Delivery isn’t possible for this location</b>
+                  <span>
+                    We don’t currently have a courier service to this postcode.
+                    Try another address or contact the store for help.
+                  </span>
+                  <button
+                    type="button"
+                    className="text-link"
+                    onClick={() => {
+                      setShippingQuote(null);
+                      setSelectedCourierId("");
+                      setMessage("");
+                      setNewAddress(true);
+                    }}
+                  >
+                    Try another address
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="summary-total">
               <span>Total</span>
-              <strong>₹{total}</strong>
+              <strong>₹{orderTotal.toFixed(2)}</strong>
             </div>
             <h3 className="payment-heading">Payment method</h3>
             <div className="payment-option payment-option-fixed">
@@ -475,9 +780,12 @@ export default function Cart() {
             {message && <p className="notice error">{message}</p>}
             <button
               className="btn class-flow-button class-flow-button--gold btn-full"
-              disabled={busy}
+              disabled={
+                busy ||
+                Boolean(currentShippingQuote && !selectedCourier)
+              }
             >
-              {busy ? "Processing…" : "Continue to payment"}
+              {busy ? "Please wait…" : "Continue"}
             </button>
           </aside>
         </form>

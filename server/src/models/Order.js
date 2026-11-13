@@ -32,10 +32,19 @@ const schema = new mongoose.Schema(
         name: String,
         price: Number,
         quantity: { type: Number, min: 1, required: true },
+        shippingWeightKg: { type: Number, min: 0.001, max: 100, default: null },
         returnable: { type: Boolean, default: true },
         returnWindowDays: { type: Number, min: 1, max: 90, default: null },
       },
     ],
+    subtotal: { type: Number, min: 0, default: null },
+    discountAmount: { type: Number, min: 0, default: 0 },
+    coupon: {
+      code: { type: String, default: "" },
+      discountType: { type: String, enum: ["percent", "fixed", null], default: null },
+      value: { type: Number, default: null },
+    },
+    shippingCost: { type: Number, min: 0, default: 0 },
     total: { type: Number, required: true, min: 0 },
     status: {
       type: String,
@@ -106,6 +115,17 @@ const schema = new mongoose.Schema(
         breadth: Number,
         height: Number,
       },
+      autoBookingStatus: {
+        type: String,
+        enum: ["not_started", "processing", "failed", "booked"],
+        default: "not_started",
+      },
+      autoBookingError: { type: String, default: "" },
+      autoBookingStartedAt: Date,
+      selectedCourierId: Number,
+      selectedCourierName: { type: String, default: "" },
+      quotedRate: { type: Number, min: 0, default: 0 },
+      estimatedDays: { type: String, default: "" },
     },
     emailNotification: {
       status: {

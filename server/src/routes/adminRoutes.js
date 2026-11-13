@@ -39,6 +39,12 @@ import {
 } from "../controllers/classSessionController.js";
 import { uploadProductImage } from "../middleware/productImageUpload.js";
 import { requireActiveSubAdminSubscription } from "../middleware/subAdminSubscription.js";
+import {
+  createAdminCoupon,
+  deleteAdminCoupon,
+  listAdminCoupons,
+  updateAdminCoupon,
+} from "../controllers/couponController.js";
 const r = Router();
 r.use(protect);
 const adminOnly = authorize("admin");
@@ -49,6 +55,10 @@ const serviceManagers = [
 r.get("/dashboard", adminOnly, dashboard);
 r.get("/products", adminOnly, listAdminProducts);
 r.get("/orders", adminOnly, listAdminOrders);
+r.get("/coupons", adminOnly, listAdminCoupons);
+r.post("/coupons", adminOnly, createAdminCoupon);
+r.put("/coupons/:couponId", adminOnly, updateAdminCoupon);
+r.delete("/coupons/:couponId", adminOnly, deleteAdminCoupon);
 r.post("/orders/:orderId/cancel", adminOnly, adminCancelOrder);
 r.patch("/orders/:orderId/return", adminOnly, adminUpdateOrderReturn);
 r.get("/orders/:orderId/couriers", adminOnly, listOrderCouriers);

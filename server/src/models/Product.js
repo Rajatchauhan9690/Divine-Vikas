@@ -13,6 +13,7 @@ const schema = new mongoose.Schema(
     description: { type: String, default: "", maxLength: 3000 },
     image: { type: String, default: "" },
     stock: { type: Number, default: 0, min: 0 },
+    shippingWeightKg: { type: Number, min: 0.001, max: 100, default: null },
     returnable: { type: Boolean, default: true },
     returnWindowDays: { type: Number, min: 1, max: 90, default: null },
     rating: { type: Number, default: 4.8, min: 0, max: 5 },

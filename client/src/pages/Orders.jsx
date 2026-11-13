@@ -117,6 +117,17 @@ export default function Orders() {
                   currency: "INR",
                 }),
               },
+              ...(Number(data.order.discountAmount) > 0
+                ? [
+                    {
+                      label: `Coupon${data.order.coupon?.code ? ` (${data.order.coupon.code})` : ""}`,
+                      value: `−${Number(data.order.discountAmount).toLocaleString("en-IN", {
+                        style: "currency",
+                        currency: "INR",
+                      })}`,
+                    },
+                  ]
+                : []),
             ]);
             for (const item of data.order.items || [])
               if (cartItems.some((cartItem) => cartItem._id === item.product))
@@ -248,8 +259,32 @@ export default function Orders() {
           <ArrowLeft size={17} /> Back to my orders
         </Link>
       )}
-      {orderId && !ordersLoaded ? (
-        <div className="loading-state">Loading your order…</div>
+      {!ordersLoaded ? (
+        <div
+          className={`orders-list orders-skeleton-list${orderId ? " order-details-list" : ""}`}
+          role="status"
+          aria-label={orderId ? "Loading order details" : "Loading orders"}
+        >
+          {Array.from({ length: orderId ? 1 : 3 }, (_, index) => (
+            <article className="order-card order-skeleton-card" key={index}>
+              <div className="order-skeleton-head">
+                <div className="order-skeleton-copy">
+                  <span className="order-skeleton order-skeleton-short" />
+                  <span className="order-skeleton order-skeleton-date" />
+                </div>
+                <span className="order-skeleton order-skeleton-status" />
+              </div>
+              <div className="order-skeleton-items">
+                <span className="order-skeleton order-skeleton-icon" />
+                <span className="order-skeleton order-skeleton-item-name" />
+              </div>
+              <div className="order-skeleton-footer">
+                <span className="order-skeleton order-skeleton-total" />
+                <span className="order-skeleton order-skeleton-action" />
+              </div>
+            </article>
+          ))}
+        </div>
       ) : orderId && !orders.some((order) => order._id === orderId) ? (
         <div className="empty-products">
           <h3>Order not found.</h3>
@@ -358,6 +393,29 @@ export default function Orders() {
                 ))}
               </div>
               <div className="order-card-summary">
+                {Number.isFinite(o.subtotal) && (
+                  <div>
+                    <small>Items subtotal</small>
+                    <b>₹{o.subtotal}</b>
+                  </div>
+                )}
+                {Number(o.discountAmount) > 0 && (
+                  <div>
+                    <small>Coupon {o.coupon?.code ? `(${o.coupon.code})` : "discount"}</small>
+                    <b>−₹{Number(o.discountAmount).toFixed(2)}</b>
+                  </div>
+                )}
+                {Number(o.shippingCost) > 0 && (
+                  <div>
+                    <small>Delivery</small>
+                    <b>
+                      ₹{Number(o.shippingCost).toFixed(2)}
+                      {o.shipping?.selectedCourierName
+                        ? ` · ${o.shipping.selectedCourierName}`
+                        : ""}
+                    </b>
+                  </div>
+                )}
                 <div>
                   <small>Order total</small>
                   <strong>₹{o.total}</strong>
