@@ -890,7 +890,11 @@ textarea {
   min-height: 100vh;
   min-height: 100svh;
   background:
-    radial-gradient(ellipse at 50% 38%, rgba(245, 237, 220, 0.62), transparent 42%),
+    radial-gradient(
+      ellipse at 50% 38%,
+      rgba(245, 237, 220, 0.62),
+      transparent 42%
+    ),
     #fbfaf7;
 }
 .route-loading-card {
@@ -1429,7 +1433,6 @@ textarea {
 }
 .cart-action-link:hover {
   color: #a77a34;
-  text-decoration: underline;
   text-underline-offset: 3px;
 }
 .checkout-address-review p {
@@ -4530,7 +4533,11 @@ body.cashfree-checkout-active .footer {
   padding: clamp(30px, 6vw, 48px);
   border-top: 5px solid #b9852d;
   background:
-    radial-gradient(ellipse at 92% 10%, rgb(208 222 201 / 48%), transparent 38%),
+    radial-gradient(
+      ellipse at 92% 10%,
+      rgb(208 222 201 / 48%),
+      transparent 38%
+    ),
     linear-gradient(135deg, #f8f7f0, #fff);
 }
 .payment-success-icon {
@@ -4555,7 +4562,9 @@ body.cashfree-checkout-active .footer {
 .payment-success-copy h1 {
   margin: 9px 0;
   color: #23382d;
-  font: clamp(28px, 4.5vw, 40px)/1.15 "Playfair Display", serif;
+  font:
+    clamp(28px, 4.5vw, 40px)/1.15 "Playfair Display",
+    serif;
 }
 .payment-success-copy > p {
   max-width: 500px;
@@ -7381,8 +7390,7 @@ body.cashfree-checkout-active .footer {
   padding: 18px;
   border: 1px solid #e5e2d8;
   border-radius: 12px;
-  background:
-    linear-gradient(145deg, #fff 60%, #f7f8f3);
+  background: linear-gradient(145deg, #fff 60%, #f7f8f3);
   box-shadow: 0 6px 18px #26352b0a;
   transition:
     transform 160ms ease,
@@ -7474,7 +7482,9 @@ body.cashfree-checkout-active .footer {
 .admin-subadmin-appointments-title {
   margin: 0;
   color: #26352b;
-  font: 22px "Playfair Display", serif;
+  font:
+    22px "Playfair Display",
+    serif;
 }
 .admin-subadmin-appointments-heading p {
   margin: 5px 0 0;
@@ -7490,7 +7500,9 @@ body.cashfree-checkout-active .footer {
 .admin-subadmin-appointments-title {
   margin: 0;
   color: #26352b;
-  font: 22px "Playfair Display", serif;
+  font:
+    22px "Playfair Display",
+    serif;
 }
 .admin-subadmin-appointment-metrics {
   display: flex;
@@ -7559,7 +7571,8 @@ body.cashfree-checkout-active .footer {
   border-top: 1px solid #eeece5;
   border-bottom: 1px solid #eeece5;
 }
-.admin-subadmin-appointment-card-details > span:not(.admin-subadmin-appointment-time) {
+.admin-subadmin-appointment-card-details
+  > span:not(.admin-subadmin-appointment-time) {
   color: #687368;
   font-size: 12px;
 }
@@ -8689,8 +8702,7 @@ body.cashfree-checkout-active .footer {
   border: 1px solid #e5dfd1;
   border-radius: 16px;
   background:
-    radial-gradient(ellipse at 100% 0%, #edf1e8 0, transparent 38%),
-    #fffdf9;
+    radial-gradient(ellipse at 100% 0%, #edf1e8 0, transparent 38%), #fffdf9;
   box-shadow: 0 14px 36px #26352b0d;
 }
 
@@ -8967,12 +8979,7 @@ body.cashfree-checkout-active .footer {
 }
 .shop-skeleton {
   display: block;
-  background: linear-gradient(
-    100deg,
-    #eeeae2 20%,
-    #f7f4ed 38%,
-    #eeeae2 56%
-  );
+  background: linear-gradient(100deg, #eeeae2 20%, #f7f4ed 38%, #eeeae2 56%);
   background-size: 220% 100%;
   animation: content-skeleton-shimmer 1.35s ease-in-out infinite;
 }
@@ -9023,12 +9030,7 @@ body.cashfree-checkout-active .footer {
 .order-skeleton {
   display: block;
   border-radius: 5px;
-  background: linear-gradient(
-    100deg,
-    #eeeae2 20%,
-    #f7f4ed 38%,
-    #eeeae2 56%
-  );
+  background: linear-gradient(100deg, #eeeae2 20%, #f7f4ed 38%, #eeeae2 56%);
   background-size: 220% 100%;
   animation: content-skeleton-shimmer 1.35s ease-in-out infinite;
 }
@@ -9128,12 +9130,7 @@ body.cashfree-checkout-active .footer {
 .admin-card-skeleton-line,
 .admin-card-skeleton-pill {
   display: block;
-  background: linear-gradient(
-    100deg,
-    #eeeae2 20%,
-    #f7f4ed 38%,
-    #eeeae2 56%
-  );
+  background: linear-gradient(100deg, #eeeae2 20%, #f7f4ed 38%, #eeeae2 56%);
   background-size: 220% 100%;
   animation: content-skeleton-shimmer 1.35s ease-in-out infinite;
 }
