@@ -310,7 +310,7 @@ export const listOrderCouriers = asyncHandler(async (req, res) => {
   const packageData = packageDetails(req.query);
   const couriers = await getShiprocketCouriers({
     deliveryPostalCode: order.shippingAddress.postalCode,
-    weight: packageData.weight,
+    ...packageData,
     declaredValue: order.subtotal ?? order.total - (order.shippingCost || 0),
   });
   res.json({

@@ -41,6 +41,9 @@ const blank = {
   image: null,
   stock: "",
   shippingWeightKg: "",
+  shippingLengthCm: "",
+  shippingBreadthCm: "",
+  shippingHeightCm: "",
   returnable: true,
   returnWindowDays: "",
 };
@@ -56,6 +59,11 @@ function validateProductForm(values, requireImage = true) {
   const price = Number(values.price);
   const stock = Number(values.stock);
   const shippingWeightKg = String(values.shippingWeightKg ?? "").trim();
+  const shippingDimensions = [
+    values.shippingLengthCm,
+    values.shippingBreadthCm,
+    values.shippingHeightCm,
+  ].map((value) => String(value ?? "").trim());
   const returnWindowDays = String(values.returnWindowDays ?? "").trim();
 
   if (typeof values.name !== "string" || values.name.trim().length < 2)
@@ -80,6 +88,19 @@ function validateProductForm(values, requireImage = true) {
   )
     errors.shippingWeightKg =
       "Enter a shipping weight between 0.001 and 100 kg.";
+
+  if (
+    shippingDimensions.some(Boolean) &&
+    shippingDimensions.some(
+      (dimension) =>
+        !dimension ||
+        !Number.isFinite(Number(dimension)) ||
+        Number(dimension) < 0.1 ||
+        Number(dimension) > 1000,
+    )
+  )
+    errors.shippingDimensions =
+      "Enter all three product dimensions between 0.1 and 1000 cm, or leave all three blank.";
 
   if (
     values.returnable &&
@@ -327,6 +348,18 @@ export default function Admin() {
         product.shippingWeightKg == null
           ? ""
           : String(product.shippingWeightKg),
+      shippingLengthCm:
+        product.shippingLengthCm == null
+          ? ""
+          : String(product.shippingLengthCm),
+      shippingBreadthCm:
+        product.shippingBreadthCm == null
+          ? ""
+          : String(product.shippingBreadthCm),
+      shippingHeightCm:
+        product.shippingHeightCm == null
+          ? ""
+          : String(product.shippingHeightCm),
       returnable:
         product.returnable !== false &&
         Number.isInteger(product.returnWindowDays) &&
@@ -697,9 +730,39 @@ export default function Admin() {
                 >
                   {productValidationAttempted && productErrors.shippingWeightKg
                     ? productErrors.shippingWeightKg
-                    : "Required for checkout delivery quotes and automatic Shiprocket booking. Enter the weight of one item in kg."}
+                    : "Required for checkout delivery quotes. Enter the packed weight of one product in kg."}
                 </small>
               </label>
+              {[
+                ["shippingLengthCm", "Length (cm)"],
+                ["shippingBreadthCm", "Breadth (cm)"],
+                ["shippingHeightCm", "Height (cm)"],
+              ].map(([field, label]) => (
+                <label key={field}>
+                    Product {label}
+                    <input
+                      type="number"
+                      min="0.1"
+                      max="1000"
+                      step="0.1"
+                      aria-invalid={Boolean(productErrors.shippingDimensions)}
+                      aria-describedby="product-shipping-dimensions-help"
+                      value={form[field]}
+                      onChange={(event) =>
+                        updateProductField(field, event.target.value)
+                      }
+                    />
+                </label>
+              ))}
+              <small
+                id="product-shipping-dimensions-help"
+                className={`admin-field-help wide${productErrors.shippingDimensions ? " admin-field-error" : ""}`}
+                aria-live="polite"
+              >
+                {productValidationAttempted && productErrors.shippingDimensions
+                    ? productErrors.shippingDimensions
+                    : "Optional, but required for automatic shipping. Enter the packed dimensions of one product; all three must be provided together. Automatic orders stack items vertically."}
+              </small>
               <label>
                 Return window (days)
                 <input
@@ -873,8 +936,15 @@ export default function Admin() {
                     <span>{p.stock} in stock</span>
                     <span>
                       {p.shippingWeightKg
-                        ? `${p.shippingWeightKg} kg shipping weight`
+                        ? `${p.shippingWeightKg} kg packed shipping weight`
                         : "Shipping weight missing — checkout delivery unavailable"}
+                    </span>
+                    <span>
+                      {p.shippingLengthCm &&
+                      p.shippingBreadthCm &&
+                      p.shippingHeightCm
+                        ? `${p.shippingLengthCm} × ${p.shippingBreadthCm} × ${p.shippingHeightCm} cm packed dimensions`
+                        : "Shipping dimensions missing — automatic booking unavailable"}
                     </span>
                     <span>
                       {p.returnable === false

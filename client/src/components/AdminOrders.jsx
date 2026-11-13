@@ -564,6 +564,14 @@ function OrderRow({
                 {order.shipping?.autoBookingStatus === "processing" && (
                   <small>Automatic Shiprocket booking is in progress.</small>
                 )}
+                {order.shipping?.autoBookingStatus === "manual_required" &&
+                  !order.shipping?.labelUrl && (
+                  <p className="notice" role="status">
+                    Automatic booking was skipped:{" "}
+                    {order.shipping.autoBookingError} Enter the actual parcel
+                    details below to ship manually.
+                  </p>
+                )}
                 {order.shipping?.autoBookingStatus === "failed" && (
                   <p className="notice error" role="alert">
                     Automatic booking failed: {order.shipping.autoBookingError}

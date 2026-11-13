@@ -1287,12 +1287,18 @@ test('admin can edit product details without replacing its image', async () => {
     .field('shortDescription', 'Updated short description')
     .field('description', 'Updated description')
     .field('stock', '12')
+    .field('shippingLengthCm', '12')
+    .field('shippingBreadthCm', '8')
+    .field('shippingHeightCm', '4')
     .field('returnWindowDays', '3')
     .expect(200);
   assert.equal(response.body.product.name, 'Updated Product');
   assert.equal(response.body.product.stock, 12);
   assert.equal(response.body.product.returnable, true);
   assert.equal(response.body.product.returnWindowDays, 3);
+  assert.equal(response.body.product.shippingLengthCm, 12);
+  assert.equal(response.body.product.shippingBreadthCm, 8);
+  assert.equal(response.body.product.shippingHeightCm, 4);
   assert.equal(response.body.product.image, 'https://example.com/product.png');
 
   await request(app)
@@ -1310,6 +1316,21 @@ test('admin can edit product details without replacing its image', async () => {
     .field('returnWindowDays', '91')
     .expect(400);
   assert.equal((await Product.findById(product._id)).returnWindowDays, 3);
+
+  await request(app)
+    .put(`/api/admin/products/${product._id}`)
+    .set({
+      Authorization: 'Bearer ' + administrator.accessToken,
+      Origin: 'http://localhost:5173',
+    })
+    .field('name', 'Updated Product')
+    .field('price', '250')
+    .field('category', 'Mood uplifters')
+    .field('shortDescription', 'Updated short description')
+    .field('description', 'Updated description')
+    .field('stock', '12')
+    .field('shippingLengthCm', '12')
+    .expect(400);
 
   const nonReturnable = await request(app)
     .put(`/api/admin/products/${product._id}`)
@@ -2207,6 +2228,9 @@ test('Cashfree product checkout creates an order only after successful payment',
     price: 250,
     stock: 3,
     shippingWeightKg: 0.35,
+    shippingLengthCm: 10,
+    shippingBreadthCm: 8,
+    shippingHeightCm: 4,
     returnWindowDays: 5,
   });
   const address = {
@@ -2221,13 +2245,12 @@ test('Cashfree product checkout creates an order only after successful payment',
   const originalClientId = process.env.CASHFREE_CLIENT_ID;
   const originalClientSecret = process.env.CASHFREE_CLIENT_SECRET;
   const originalPickupPostcode = process.env.SHIPROCKET_PICKUP_POSTCODE;
-  const originalShippingTare = process.env.SHIPROCKET_PACKAGE_TARE_KG;
   const originalShiprocketEmail = process.env.SHIPROCKET_EMAIL;
   const originalShiprocketPassword = process.env.SHIPROCKET_PASSWORD;
+  let serviceabilityUrl;
   process.env.CASHFREE_CLIENT_ID = 'test-client-id';
   process.env.CASHFREE_CLIENT_SECRET = 'test-cashfree-webhook-secret';
   process.env.SHIPROCKET_PICKUP_POSTCODE = '411001';
-  process.env.SHIPROCKET_PACKAGE_TARE_KG = '0.2';
   process.env.SHIPROCKET_EMAIL = 'checkout-quote@example.test';
   process.env.SHIPROCKET_PASSWORD = 'test-shiprocket-password';
   let availableCouriers = [
@@ -2254,12 +2277,14 @@ test('Cashfree product checkout creates an order only after successful payment',
   globalThis.fetch = async (url, options) => {
     if (String(url).endsWith('/auth/login'))
       return Response.json({ token: 'test-checkout-shiprocket-token' });
-    if (String(url).includes('/courier/serviceability/'))
+    if (String(url).includes('/courier/serviceability/')) {
+      serviceabilityUrl = new URL(String(url));
       return Response.json({
         data: {
           available_courier_companies: availableCouriers,
         },
       });
+    }
     if (String(url).endsWith('/payments'))
       return new Response(
         JSON.stringify([
@@ -2349,6 +2374,10 @@ test('Cashfree product checkout creates an order only after successful payment',
       shippingQuote.body.couriers.map((courier) => courier.id),
       [7, 8],
     );
+    assert.equal(serviceabilityUrl.searchParams.get('weight'), '0.35');
+    assert.equal(serviceabilityUrl.searchParams.get('length'), '10');
+    assert.equal(serviceabilityUrl.searchParams.get('breadth'), '8');
+    assert.equal(serviceabilityUrl.searchParams.get('height'), '4');
     assert.deepEqual(shippingQuote.body.couriers[0].badges, ['Lowest price']);
     assert.deepEqual(shippingQuote.body.couriers[1].badges, ['Fastest']);
 
@@ -2410,6 +2439,7 @@ test('Cashfree product checkout creates an order only after successful payment',
     assert.equal(attempt.items[0].returnWindowDays, 5);
     assert.equal(attempt.items[0].returnable, true);
     assert.equal(attempt.items[0].shippingWeightKg, 0.35);
+    assert.equal(attempt.items[0].shippingLengthCm, 10);
     assert.equal(attempt.subtotal, 250);
     assert.equal(attempt.shippingCost, 25);
     assert.equal(attempt.total, 275);
@@ -2514,6 +2544,7 @@ test('Cashfree product checkout creates an order only after successful payment',
     assert.equal(orders[0].items[0].returnWindowDays, 5);
     assert.equal(orders[0].items[0].returnable, true);
     assert.equal(orders[0].items[0].shippingWeightKg, 0.35);
+    assert.equal(orders[0].items[0].shippingHeightCm, 4);
     assert.equal((await Product.findById(product._id)).stock, 2);
     assert.equal(
       (await ProductPaymentAttempt.findById(paidAttempt._id)).status,
@@ -2539,9 +2570,6 @@ test('Cashfree product checkout creates an order only after successful payment',
     if (originalPickupPostcode === undefined)
       delete process.env.SHIPROCKET_PICKUP_POSTCODE;
     else process.env.SHIPROCKET_PICKUP_POSTCODE = originalPickupPostcode;
-    if (originalShippingTare === undefined)
-      delete process.env.SHIPROCKET_PACKAGE_TARE_KG;
-    else process.env.SHIPROCKET_PACKAGE_TARE_KG = originalShippingTare;
     if (originalShiprocketEmail === undefined)
       delete process.env.SHIPROCKET_EMAIL;
     else process.env.SHIPROCKET_EMAIL = originalShiprocketEmail;
@@ -3611,6 +3639,9 @@ test('paid customer checkout automatically books shipment visible to admin', asy
     price: 250,
     stock: 2,
     shippingWeightKg: 0.35,
+    shippingLengthCm: 25,
+    shippingBreadthCm: 20,
+    shippingHeightCm: 10,
   });
   const address = {
     fullName: 'Test Customer',
@@ -3622,11 +3653,8 @@ test('paid customer checkout automatically books shipment visible to admin', asy
   };
   const env = {
     SHIPROCKET_AUTO_BOOK_PAID_ORDERS: 'true',
+    SHIPROCKET_AUTO_BOOK_MAX_ITEMS: '5',
     SHIPROCKET_COURIER_SELECTION: 'lowest_cost',
-    SHIPROCKET_PACKAGE_LENGTH_CM: '25',
-    SHIPROCKET_PACKAGE_BREADTH_CM: '20',
-    SHIPROCKET_PACKAGE_HEIGHT_CM: '10',
-    SHIPROCKET_PACKAGE_TARE_KG: '0.2',
     SHIPROCKET_EMAIL: 'shiprocket@example.test',
     SHIPROCKET_PASSWORD: 'test-shiprocket-password',
     SHIPROCKET_PICKUP_LOCATION: 'Test Pickup',
@@ -3746,6 +3774,9 @@ test('automatic Shiprocket booking selects the configured courier and saves ship
     name: 'Automatic Shipment Product',
     price: 250,
     stock: 1,
+    shippingLengthCm: 25,
+    shippingBreadthCm: 20,
+    shippingHeightCm: 10,
   });
   const order = await Order.create({
     user: customer.user.id,
@@ -3755,6 +3786,9 @@ test('automatic Shiprocket booking selects the configured courier and saves ship
       price: 250,
       quantity: 2,
       shippingWeightKg: 0.4,
+      shippingLengthCm: 25,
+      shippingBreadthCm: 20,
+      shippingHeightCm: 10,
     }],
     total: 500,
     shippingAddress: {
@@ -3772,11 +3806,8 @@ test('automatic Shiprocket booking selects the configured courier and saves ship
 
   const env = {
     SHIPROCKET_AUTO_BOOK_PAID_ORDERS: 'true',
+    SHIPROCKET_AUTO_BOOK_MAX_ITEMS: '5',
     SHIPROCKET_COURIER_SELECTION: 'lowest_cost',
-    SHIPROCKET_PACKAGE_LENGTH_CM: '25',
-    SHIPROCKET_PACKAGE_BREADTH_CM: '20',
-    SHIPROCKET_PACKAGE_HEIGHT_CM: '10',
-    SHIPROCKET_PACKAGE_TARE_KG: '0.2',
     SHIPROCKET_EMAIL: 'shiprocket@example.test',
     SHIPROCKET_PASSWORD: 'test-password',
     SHIPROCKET_PICKUP_LOCATION: 'Test Pickup',
@@ -3835,12 +3866,16 @@ test('automatic Shiprocket booking selects the configured courier and saves ship
 
     const bookedOrder = await Order.findById(order._id);
     assert.equal(bookedOrder.shipping.autoBookingStatus, 'booked');
-    assert.equal(bookedOrder.shipping.package.weight, 1);
+    assert.equal(bookedOrder.shipping.package.weight, 0.8);
     assert.equal(bookedOrder.shipping.package.length, 25);
+    assert.equal(bookedOrder.shipping.package.breadth, 20);
+    assert.equal(bookedOrder.shipping.package.height, 20);
     assert.equal(bookedOrder.shipping.selectedCourierId, 22);
     assert.equal(assignedCourier, 22);
-    assert.equal(createdShipment.weight, 1);
+    assert.equal(createdShipment.weight, 0.8);
     assert.equal(createdShipment.length, 25);
+    assert.equal(createdShipment.breadth, 20);
+    assert.equal(createdShipment.height, 20);
     assert.equal(bookedOrder.tracking.trackingNumber, 'TEST-AWB-456');
     assert.equal(bookedOrder.shipping.labelUrl, 'https://labels.example.test/test.pdf');
     assert.equal(bookedOrder.status, 'processing');
@@ -3883,18 +3918,10 @@ test('automatic Shiprocket booking falls back to manual fulfillment without prod
   });
   const originalEnv = {
     enabled: process.env.SHIPROCKET_AUTO_BOOK_PAID_ORDERS,
-    length: process.env.SHIPROCKET_PACKAGE_LENGTH_CM,
-    breadth: process.env.SHIPROCKET_PACKAGE_BREADTH_CM,
-    height: process.env.SHIPROCKET_PACKAGE_HEIGHT_CM,
-    tare: process.env.SHIPROCKET_PACKAGE_TARE_KG,
   };
 
   try {
     process.env.SHIPROCKET_AUTO_BOOK_PAID_ORDERS = 'true';
-    process.env.SHIPROCKET_PACKAGE_LENGTH_CM = '25';
-    process.env.SHIPROCKET_PACKAGE_BREADTH_CM = '20';
-    process.env.SHIPROCKET_PACKAGE_HEIGHT_CM = '10';
-    process.env.SHIPROCKET_PACKAGE_TARE_KG = '0.2';
     const { automatePaidOrderShipping } = await import(
       '../src/services/automaticOrderShippingService.js'
     );
@@ -3905,10 +3932,136 @@ test('automatic Shiprocket booking falls back to manual fulfillment without prod
     assert.equal(failedOrder.shipping.shiprocketOrderId, '');
   } finally {
     process.env.SHIPROCKET_AUTO_BOOK_PAID_ORDERS = originalEnv.enabled;
-    process.env.SHIPROCKET_PACKAGE_LENGTH_CM = originalEnv.length;
-    process.env.SHIPROCKET_PACKAGE_BREADTH_CM = originalEnv.breadth;
-    process.env.SHIPROCKET_PACKAGE_HEIGHT_CM = originalEnv.height;
-    process.env.SHIPROCKET_PACKAGE_TARE_KG = originalEnv.tare;
+  }
+});
+
+test('automatic Shiprocket booking requires product dimensions', async () => {
+  const customer = await registerUser('missing-shipping-dimensions@example.com');
+  const product = await Product.create({
+    name: 'Product Without Shipping Dimensions',
+    price: 100,
+    stock: 1,
+    shippingWeightKg: 0.2,
+  });
+  const order = await Order.create({
+    user: customer.user.id,
+    items: [{
+      product: product._id,
+      name: product.name,
+      price: 100,
+      quantity: 1,
+      shippingWeightKg: 0.2,
+    }],
+    total: 100,
+    shippingAddress: {
+      fullName: 'Test User',
+      phone: '9876543210',
+      line1: 'Test Road',
+      city: 'Pune',
+      state: 'Maharashtra',
+      postalCode: '411001',
+    },
+    paymentMethod: 'cashfree',
+    paymentStatus: 'paid',
+    status: 'paid',
+  });
+  const originalEnabled = process.env.SHIPROCKET_AUTO_BOOK_PAID_ORDERS;
+  const originalFetch = globalThis.fetch;
+  let shiprocketRequested = false;
+  globalThis.fetch = async () => {
+    shiprocketRequested = true;
+    throw new Error('Orders without product dimensions must not be booked');
+  };
+
+  try {
+    process.env.SHIPROCKET_AUTO_BOOK_PAID_ORDERS = 'true';
+    const { automatePaidOrderShipping } = await import(
+      '../src/services/automaticOrderShippingService.js'
+    );
+    assert.equal(await automatePaidOrderShipping(order._id), false);
+
+    const updatedOrder = await Order.findById(order._id);
+    assert.equal(updatedOrder.shipping.autoBookingStatus, 'manual_required');
+    assert.match(updatedOrder.shipping.autoBookingError, /dimensions are missing/);
+    assert.equal(updatedOrder.shipping.shiprocketOrderId, '');
+    assert.equal(shiprocketRequested, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalEnabled === undefined)
+      delete process.env.SHIPROCKET_AUTO_BOOK_PAID_ORDERS;
+    else process.env.SHIPROCKET_AUTO_BOOK_PAID_ORDERS = originalEnabled;
+  }
+});
+
+test('large orders require manual Shiprocket fulfillment', async () => {
+  const customer = await registerUser('large-order-manual-shipping@example.com');
+  const product = await Product.create({
+    name: 'Large Order Product',
+    price: 100,
+    stock: 20,
+    shippingWeightKg: 0.1,
+    shippingLengthCm: 20,
+    shippingBreadthCm: 15,
+    shippingHeightCm: 20,
+  });
+  const order = await Order.create({
+    user: customer.user.id,
+    items: [{
+      product: product._id,
+      name: product.name,
+      price: 100,
+      quantity: 20,
+      shippingWeightKg: 0.1,
+      shippingLengthCm: 20,
+      shippingBreadthCm: 15,
+      shippingHeightCm: 20,
+    }],
+    total: 2000,
+    shippingAddress: {
+      fullName: 'Test User',
+      phone: '9876543210',
+      line1: 'Test Road',
+      city: 'Pune',
+      state: 'Maharashtra',
+      postalCode: '411001',
+    },
+    paymentMethod: 'cashfree',
+    paymentStatus: 'paid',
+    status: 'paid',
+  });
+  const env = {
+    SHIPROCKET_AUTO_BOOK_PAID_ORDERS: 'true',
+    SHIPROCKET_AUTO_BOOK_MAX_ITEMS: '5',
+  };
+  const originalEnv = Object.fromEntries(
+    Object.keys(env).map((key) => [key, process.env[key]]),
+  );
+  const originalFetch = globalThis.fetch;
+  let shiprocketRequested = false;
+  globalThis.fetch = async () => {
+    shiprocketRequested = true;
+    throw new Error('Large orders must not be booked automatically');
+  };
+
+  try {
+    Object.assign(process.env, env);
+    const { automatePaidOrderShipping } = await import(
+      '../src/services/automaticOrderShippingService.js'
+    );
+    assert.equal(await automatePaidOrderShipping(order._id), false);
+
+    const updatedOrder = await Order.findById(order._id);
+    assert.equal(updatedOrder.shipping.autoBookingStatus, 'manual_required');
+    assert.match(updatedOrder.shipping.autoBookingError, /20 items/);
+    assert.match(updatedOrder.shipping.autoBookingError, /limit of 5/);
+    assert.equal(updatedOrder.shipping.shiprocketOrderId, '');
+    assert.equal(shiprocketRequested, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 });
 

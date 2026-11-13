@@ -1,38 +1,24 @@
 const courierStrategies = ["lowest_cost", "fastest", "recommended"];
 
-function positiveNumber(value, name) {
+function positiveInteger(value, name) {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0)
-    throw new Error(`${name} must be a positive number`);
+  if (!Number.isInteger(parsed) || parsed <= 0)
+    throw new Error(`${name} must be a positive whole number`);
   return parsed;
 }
 
 export function getShippingAutomationConfig() {
   return {
     enabled: process.env.SHIPROCKET_AUTO_BOOK_PAID_ORDERS === "true",
+    maxAutomaticItems: positiveInteger(
+      process.env.SHIPROCKET_AUTO_BOOK_MAX_ITEMS ?? "5",
+      "SHIPROCKET_AUTO_BOOK_MAX_ITEMS",
+    ),
     courierSelection: courierStrategies.includes(
       process.env.SHIPROCKET_COURIER_SELECTION,
     )
       ? process.env.SHIPROCKET_COURIER_SELECTION
       : "lowest_cost",
-    package: {
-      length: positiveNumber(
-        process.env.SHIPROCKET_PACKAGE_LENGTH_CM,
-        "SHIPROCKET_PACKAGE_LENGTH_CM",
-      ),
-      breadth: positiveNumber(
-        process.env.SHIPROCKET_PACKAGE_BREADTH_CM,
-        "SHIPROCKET_PACKAGE_BREADTH_CM",
-      ),
-      height: positiveNumber(
-        process.env.SHIPROCKET_PACKAGE_HEIGHT_CM,
-        "SHIPROCKET_PACKAGE_HEIGHT_CM",
-      ),
-      tareWeight: positiveNumber(
-        process.env.SHIPROCKET_PACKAGE_TARE_KG,
-        "SHIPROCKET_PACKAGE_TARE_KG",
-      ),
-    },
   };
 }
 

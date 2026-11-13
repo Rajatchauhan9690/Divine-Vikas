@@ -5,6 +5,7 @@ import ProductPaymentAttempt from "../models/ProductPaymentAttempt.js";
 import Coupon from "../models/Coupon.js";
 import User from "../models/User.js";
 import AppError from "../utils/AppError.js";
+import { calculateShippingPackage } from "../utils/shippingPackage.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { cashfreeRequest } from "../services/cashfreeService.js";
 import {
@@ -65,6 +66,9 @@ async function buildOrderItems(raw) {
       price: product.price,
       quantity,
       shippingWeightKg: product.shippingWeightKg ?? null,
+      shippingLengthCm: product.shippingLengthCm ?? null,
+      shippingBreadthCm: product.shippingBreadthCm ?? null,
+      shippingHeightCm: product.shippingHeightCm ?? null,
       returnable,
       returnWindowDays: returnable ? product.returnWindowDays : null,
     });
@@ -86,22 +90,10 @@ async function getDeliveryOptions(items, address, subtotal) {
       400,
       "SHIPPING_WEIGHT_REQUIRED",
     );
-  const tareWeight = Number(process.env.SHIPROCKET_PACKAGE_TARE_KG || 0.2);
-  if (!Number.isFinite(tareWeight) || tareWeight <= 0)
-    throw new AppError(
-      "Set SHIPROCKET_PACKAGE_TARE_KG to a positive package weight",
-      503,
-      "SHIPROCKET_NOT_CONFIGURED",
-    );
-  const weight = Number((
-    items.reduce(
-      (sum, item) => sum + item.shippingWeightKg * item.quantity,
-      0,
-    ) + tareWeight
-  ).toFixed(3));
+  const packageData = calculateShippingPackage(items);
   const available = await getShiprocketCouriers({
     deliveryPostalCode: address.postalCode,
-    weight,
+    ...packageData,
     declaredValue: subtotal,
   });
   const couriers = available

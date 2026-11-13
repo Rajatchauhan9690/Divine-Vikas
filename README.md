@@ -151,6 +151,8 @@ Set the three `CLOUDINARY_*` server variables to enable Cloudinary product image
 
 Set the `SHIPROCKET_*` credentials and pickup settings to use courier discovery and shipment creation from Admin Orders. Configure the provider's tracking webhook to call `/api/courier-updates` and use the same secret for `SHIPROCKET_WEBHOOK_TOKEN`. Shipment creation is restricted to paid orders.
 
+Enter each product's packed weight and (for automatic booking) packed length, breadth, and height in Admin → Products. Checkout quotes sum packed unit weights; automatic booking stacks the products vertically, using the largest length and breadth and the sum of item heights. This simple packing rule assumes the packed items can safely be stacked. Products without dimensions and orders above 5 total units are flagged for manual shipping in Admin Orders. Change the limit with `SHIPROCKET_AUTO_BOOK_MAX_ITEMS`. Package dimensions and weight are no longer configured in environment variables.
+
 ## Security
 
 - Helmet security headers, an explicit CORS origin, request-size limits, and centralized error handling.

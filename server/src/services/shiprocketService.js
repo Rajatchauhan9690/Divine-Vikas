@@ -108,6 +108,9 @@ export async function shiprocketRequest(path, { method = "POST", body } = {}) {
 export async function getShiprocketCouriers({
   deliveryPostalCode,
   weight,
+  length,
+  breadth,
+  height,
   declaredValue,
 }) {
   const pickupPostalCode = process.env.SHIPROCKET_PICKUP_POSTCODE;
@@ -124,6 +127,11 @@ export async function getShiprocketCouriers({
     cod: "0",
     declared_value: String(declaredValue),
   });
+  if ([length, breadth, height].every(Number.isFinite)) {
+    query.set("length", String(length));
+    query.set("breadth", String(breadth));
+    query.set("height", String(height));
+  }
   const result = await shiprocketRequest(
     `/courier/serviceability/?${query}`,
     { method: "GET" },

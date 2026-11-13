@@ -9,25 +9,19 @@ import {
   generateShiprocketLabel,
   getShiprocketCouriers,
 } from "./shiprocketService.js";
+import { calculateShippingPackage } from "../utils/shippingPackage.js";
 
-function packageForOrder(order, config) {
-  const missingWeights = order.items.filter(
-    (item) =>
-      !Number.isFinite(item.shippingWeightKg) || item.shippingWeightKg <= 0,
+async function requireManualFulfillment(order, message) {
+  await Order.updateOne(
+    { _id: order._id, "shipping.autoBookingStatus": "processing" },
+    {
+      $set: {
+        "shipping.autoBookingStatus": "manual_required",
+        "shipping.autoBookingError": message,
+      },
+    },
   );
-  if (missingWeights.length)
-    throw new Error(
-      `Add shipping weight for ${missingWeights.map((item) => item.name).join(", ")} before automatic shipment booking.`,
-    );
-
-  const itemWeight = order.items.reduce(
-    (total, item) => total + item.shippingWeightKg * item.quantity,
-    0,
-  );
-  return {
-    ...config.package,
-    weight: Number((itemWeight + config.package.tareWeight).toFixed(3)),
-  };
+  return false;
 }
 
 export async function automatePaidOrderShipping(orderId) {
@@ -57,7 +51,40 @@ export async function automatePaidOrderShipping(orderId) {
 
   try {
     const config = getShippingAutomationConfig();
-    const packageData = packageForOrder(order, config);
+    const itemCount = order.items.reduce(
+      (total, item) => total + item.quantity,
+      0,
+    );
+    if (itemCount > config.maxAutomaticItems) {
+      return await requireManualFulfillment(
+        order,
+        `Order contains ${itemCount} items, above the automatic booking limit of ${config.maxAutomaticItems}. ` +
+          "Confirm the actual parcel dimensions and complete shipping manually.",
+      );
+    }
+    const missingWeights = order.items.filter(
+      (item) =>
+        !Number.isFinite(item.shippingWeightKg) || item.shippingWeightKg <= 0,
+    );
+    if (missingWeights.length)
+      throw new Error(
+        `Add shipping weight for ${missingWeights.map((item) => item.name).join(", ")} before automatic shipment booking.`,
+      );
+    const hasMissingDimensions = order.items.some(
+      (item) =>
+        !Number.isFinite(item.shippingLengthCm) ||
+        item.shippingLengthCm <= 0 ||
+        !Number.isFinite(item.shippingBreadthCm) ||
+        item.shippingBreadthCm <= 0 ||
+        !Number.isFinite(item.shippingHeightCm) ||
+        item.shippingHeightCm <= 0,
+    );
+    if (hasMissingDimensions)
+      return await requireManualFulfillment(
+        order,
+        "Product dimensions are missing. Enter the actual parcel dimensions and weight in the manual shipping fields below.",
+      );
+    const packageData = calculateShippingPackage(order.items);
     const couriers = await getShiprocketCouriers({
       deliveryPostalCode: order.shippingAddress.postalCode,
       weight: packageData.weight,
