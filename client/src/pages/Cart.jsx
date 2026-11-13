@@ -561,7 +561,7 @@ export default function Cart() {
                     <h2>Delivery address</h2>
                     <button
                       type="button"
-                      className="text-link"
+                      className="cart-action-link"
                       onClick={() => setCheckoutStep("cart")}
                     >
                       Edit
@@ -584,7 +584,7 @@ export default function Cart() {
                     <h2>Items in your order</h2>
                     <button
                       type="button"
-                      className="text-link"
+                      className="cart-action-link"
                       onClick={() => setCheckoutStep("cart")}
                     >
                       Edit bag
@@ -790,7 +790,7 @@ export default function Cart() {
                     </span>
                     <button
                       type="button"
-                      className="text-link"
+                      className="cart-action-link"
                       onClick={() => {
                         setAppliedCoupon(null);
                         setCouponSearch("");

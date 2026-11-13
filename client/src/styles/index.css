@@ -1417,6 +1417,21 @@ textarea {
 .checkout-review-heading .text-link {
   flex: 0 0 auto;
 }
+.cart-action-link {
+  flex: 0 0 auto;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: #176b48;
+  font-size: 14px;
+  font-weight: 700;
+  transition: color 0.2s;
+}
+.cart-action-link:hover {
+  color: #a77a34;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .checkout-address-review p {
   margin: 0;
   color: #647168;
