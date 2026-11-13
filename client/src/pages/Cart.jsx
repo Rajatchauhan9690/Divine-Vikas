@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { useCart } from "../features/cart/CartContext";
 import { useAuth } from "../features/auth/AuthContext";
 import { api } from "../services/api";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import CashfreeCustomCheckout from "../components/CashfreeCustomCheckout";
 import PaymentSuccess from "../components/PaymentSuccess";
 import ErrorToast from "../components/ErrorToast";
@@ -38,7 +38,12 @@ export default function Cart() {
   const [newAddress, setNewAddress] = useState(false);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [shippingQuote, setShippingQuote] = useState(null);
+  const [quoteLoadingKey, setQuoteLoadingKey] = useState("");
+  const [quoteErrorKey, setQuoteErrorKey] = useState("");
+  const [quoteRetry, setQuoteRetry] = useState(0);
   const [selectedCourierId, setSelectedCourierId] = useState("");
+  const [checkoutStep, setCheckoutStep] = useState("cart");
+  const requestedQuoteKey = useRef("");
   const [couponSearch, setCouponSearch] = useState("");
   const [couponSuggestions, setCouponSuggestions] = useState([]);
   const [appliedCoupon, setAppliedCoupon] = useState(null);
@@ -64,6 +69,83 @@ export default function Cart() {
   });
   const currentShippingQuote =
     shippingQuote?.key === shippingQuoteKey ? shippingQuote : null;
+  const quoteLoading = quoteLoadingKey === shippingQuoteKey;
+  const quoteError = quoteErrorKey === shippingQuoteKey;
+  const canRequestShippingQuote =
+    ["fullName", "phone", "line1", "city", "state", "postalCode"].every(
+      (field) =>
+        typeof deliveryAddress[field] === "string" &&
+        deliveryAddress[field].trim(),
+    ) && /^\+?[0-9 ()-]{8,20}$/.test(deliveryAddress.phone);
+  useEffect(() => {
+    if (
+      !profileLoaded ||
+      !user ||
+      user.role === "admin" ||
+      !items.length ||
+      !canRequestShippingQuote ||
+      currentShippingQuote ||
+      requestedQuoteKey.current === shippingQuoteKey
+    ) {
+      return undefined;
+    }
+
+    let active = true;
+    requestedQuoteKey.current = shippingQuoteKey;
+    setQuoteLoadingKey(shippingQuoteKey);
+    setQuoteErrorKey("");
+
+    const timer = window.setTimeout(() => {
+      api
+        .post("/orders/shipping-quotes", {
+          items: items.map((item) => ({
+            product: item._id,
+            quantity: item.qty,
+          })),
+          shippingAddress: deliveryAddress,
+        })
+        .then(({ data }) => {
+          if (!active) return;
+          setShippingQuote({ key: shippingQuoteKey, couriers: data.couriers });
+          const defaultCourier =
+            data.couriers.find((courier) =>
+              courier.badges?.includes("Lowest price"),
+            ) || data.couriers[0];
+          setSelectedCourierId(defaultCourier ? String(defaultCourier.id) : "");
+        })
+        .catch((error) => {
+          if (!active) return;
+          requestedQuoteKey.current = "";
+          setQuoteErrorKey(shippingQuoteKey);
+          setMessage(
+            error.response?.data?.message ||
+              "Could not check delivery options. Please try again.",
+          );
+        })
+        .finally(() => {
+          if (active) setQuoteLoadingKey("");
+        });
+    }, 300);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [
+    profileLoaded,
+    user,
+    items.length,
+    deliveryAddress,
+    shippingQuoteKey,
+    currentShippingQuote,
+    quoteRetry,
+    canRequestShippingQuote,
+  ]);
+  useEffect(() => {
+    if (checkoutStep === "confirmation" && !currentShippingQuote) {
+      setCheckoutStep("cart");
+    }
+  }, [checkoutStep, currentShippingQuote]);
   const selectedCourier = currentShippingQuote?.couriers.find(
     (courier) => String(courier.id) === selectedCourierId,
   );
@@ -172,26 +254,26 @@ export default function Cart() {
       );
       return;
     }
+    if (!currentShippingQuote) {
+      setMessage(
+        canRequestShippingQuote
+          ? "Delivery options are still loading. Please wait a moment."
+          : "Complete your delivery address to check delivery options.",
+      );
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
       let ship =
         (!newAddress && addresses.find((saved) => saved._id === selected)) ||
         address;
-      if (!currentShippingQuote || !currentShippingQuote.couriers.length) {
-        const { data } = await api.post("/orders/shipping-quotes", {
-          items: items.map((item) => ({
-            product: item._id,
-            quantity: item.qty,
-          })),
-          shippingAddress: ship,
-        });
-        setShippingQuote({ key: shippingQuoteKey, couriers: data.couriers });
-        const defaultCourier =
-          data.couriers.find((courier) =>
-            courier.badges?.includes("Lowest price"),
-          ) || data.couriers[0];
-        setSelectedCourierId(defaultCourier ? String(defaultCourier.id) : "");
+      if (checkoutStep === "cart") {
+        if (!selectedCourier) {
+          setMessage("Choose a delivery option before reviewing your order.");
+          return;
+        }
+        setCheckoutStep("confirmation");
         return;
       }
       if (!selectedCourier) {
@@ -409,16 +491,38 @@ export default function Cart() {
           </div>,
           document.body,
         )}
-      <Link
+      <button
+        type="button"
         className="cart-back-link btn class-flow-button class-flow-button--gold"
-        to="/shop"
+        onClick={() =>
+          checkoutStep === "confirmation"
+            ? setCheckoutStep("cart")
+            : nav("/shop")
+        }
       >
-        <ArrowLeft size={16} /> Back to shop
-      </Link>
-      <span className="eyebrow">YOUR SELECTION</span>
+        <ArrowLeft size={16} /> Back
+      </button>
+      <span className="eyebrow">
+        {checkoutStep === "confirmation"
+          ? "CHECKOUT · REVIEW ORDER"
+          : "YOUR SELECTION"}
+      </span>
       <h1>
-        Your <em>bag.</em>
+        {checkoutStep === "confirmation" ? (
+          <>
+            Review your <em>order.</em>
+          </>
+        ) : (
+          <>
+            Your <em>bag.</em>
+          </>
+        )}
       </h1>
+      {checkoutStep === "confirmation" && (
+        <p className="checkout-review-intro">
+          Check your items, delivery address, and delivery speed before payment.
+        </p>
+      )}
       {!items.length ? (
         <div className="empty-products">
           <ShoppingBag size={35} />
@@ -431,170 +535,224 @@ export default function Cart() {
       ) : (
         <form className="cart-layout" onSubmit={checkout}>
           <div className="cart-items">
-            <div className="checkout-panel">
-              <h2>Delivery address</h2>
-              {addresses.length > 0 && !newAddress && (
-                <>
-                  <label>
-                    Choose a saved address
-                    <select
-                      required
-                      value={selected}
-                      onChange={(e) => setSelected(e.target.value)}
-                    >
-                      <option value="">Select address</option>
-                      {addresses.map((a) => (
-                        <option key={a._id} value={a._id}>
-                          {a.label || "Address"} — {a.line1}, {a.city}
-                          {a.isDefault ? " (Default)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="selected-address">
-                    {addresses.find((a) => a._id === selected) &&
-                      `${addresses.find((a) => a._id === selected).fullName}, ${addresses.find((a) => a._id === selected).line1}, ${addresses.find((a) => a._id === selected).city}, ${addresses.find((a) => a._id === selected).state} ${addresses.find((a) => a._id === selected).postalCode}`}
-                  </div>
-                  <button
-                    type="button"
-                    className="text-link"
-                    onClick={() => setNewAddress(true)}
-                  >
-                    Use a new address
-                  </button>
-                </>
-              )}
-              {(newAddress || !addresses.length) && (
-                <>
-                  <div className="account-form-grid">
-                    <label>
-                      Label
-                      <input
-                        required
-                        value={address.label}
-                        onChange={(e) => setField("label", e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      Full name
-                      <input
-                        required
-                        value={address.fullName}
-                        onChange={(e) => setField("fullName", e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      Phone
-                      <input
-                        required
-                        value={address.phone}
-                        onChange={(e) => setField("phone", e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      Address line 1
-                      <input
-                        required
-                        value={address.line1}
-                        onChange={(e) => setField("line1", e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      Address line 2
-                      <input
-                        value={address.line2}
-                        onChange={(e) => setField("line2", e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      City
-                      <input
-                        required
-                        value={address.city}
-                        onChange={(e) => setField("city", e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      State
-                      <input
-                        required
-                        value={address.state}
-                        onChange={(e) => setField("state", e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      Postal code
-                      <input
-                        required
-                        value={address.postalCode}
-                        onChange={(e) => setField("postalCode", e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      Country
-                      <input
-                        required
-                        value={address.country}
-                        onChange={(e) => setField("country", e.target.value)}
-                      />
-                    </label>
-                  </div>
-                  {addresses.length > 0 && (
+            {checkoutStep === "confirmation" ? (
+              <>
+                <div className="checkout-panel checkout-address-review">
+                  <div className="checkout-review-heading">
+                    <h2>Delivery address</h2>
                     <button
                       type="button"
                       className="text-link"
-                      onClick={() => setNewAddress(false)}
+                      onClick={() => setCheckoutStep("cart")}
                     >
-                      Use a saved address
+                      Edit
                     </button>
-                  )}
-                </>
-              )}
-            </div>
-            <div
-              className="cart-product-list"
-              role="region"
-              aria-label="Products in your cart"
-              tabIndex={0}
-            >
-              {items.map((i) => (
-                <article className="cart-item" key={i._id}>
-                  {i.image && <img src={i.image} alt={i.name} />}
-                  <div className="cart-item-info">
-                    <h3>{i.name}</h3>
-                    <p>₹{i.price}</p>
-                    <div className="qty-control">
-                      <button
-                        type="button"
-                        disabled={Boolean(payment)}
-                        onClick={() => change(i._id, i.qty - 1)}
-                        aria-label="Decrease quantity"
-                      >
-                        <Minus size={14} />
-                      </button>
-                      <span>{i.qty}</span>
-                      <button
-                        type="button"
-                        disabled={Boolean(payment)}
-                        onClick={() => change(i._id, i.qty + 1)}
-                        aria-label="Increase quantity"
-                      >
-                        <Plus size={14} />
-                      </button>
-                    </div>
                   </div>
-                  <button
-                    type="button"
-                    className="icon-button"
-                    disabled={Boolean(payment)}
-                    onClick={() => remove(i._id)}
-                    aria-label={`Remove ${i.name}`}
-                  >
-                    <Trash2 size={17} />
-                  </button>
-                </article>
-              ))}
-            </div>
+                  <p>
+                    <strong>{deliveryAddress.fullName}</strong>
+                    <br />
+                    {deliveryAddress.line1}
+                    {deliveryAddress.line2 ? `, ${deliveryAddress.line2}` : ""}
+                    <br />
+                    {deliveryAddress.city}, {deliveryAddress.state}{" "}
+                    {deliveryAddress.postalCode}
+                    <br />
+                    {deliveryAddress.phone}
+                  </p>
+                </div>
+                <div className="checkout-panel checkout-review-items">
+                  <div className="checkout-review-heading">
+                    <h2>Items in your order</h2>
+                    <button
+                      type="button"
+                      className="text-link"
+                      onClick={() => setCheckoutStep("cart")}
+                    >
+                      Edit bag
+                    </button>
+                  </div>
+                  {items.map((item) => (
+                    <article className="checkout-review-item" key={item._id}>
+                      {item.image && <img src={item.image} alt={item.name} />}
+                      <span>
+                        <strong>{item.name}</strong>
+                        <small>Quantity: {item.qty}</small>
+                      </span>
+                      <b>
+                        ₹{(Number(item.price) * Number(item.qty)).toFixed(2)}
+                      </b>
+                    </article>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="checkout-panel">
+                <h2>Delivery address</h2>
+                {addresses.length > 0 && !newAddress && (
+                  <>
+                    <label>
+                      Choose a saved address
+                      <select
+                        required
+                        value={selected}
+                        onChange={(e) => setSelected(e.target.value)}
+                      >
+                        <option value="">Select address</option>
+                        {addresses.map((a) => (
+                          <option key={a._id} value={a._id}>
+                            {a.label || "Address"} — {a.line1}, {a.city}
+                            {a.isDefault ? " (Default)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="selected-address">
+                      {addresses.find((a) => a._id === selected) &&
+                        `${addresses.find((a) => a._id === selected).fullName}, ${addresses.find((a) => a._id === selected).line1}, ${addresses.find((a) => a._id === selected).city}, ${addresses.find((a) => a._id === selected).state} ${addresses.find((a) => a._id === selected).postalCode}`}
+                    </div>
+                    <button
+                      type="button"
+                      className="text-link"
+                      onClick={() => setNewAddress(true)}
+                    >
+                      Use a new address
+                    </button>
+                  </>
+                )}
+                {(newAddress || !addresses.length) && (
+                  <>
+                    <div className="account-form-grid">
+                      <label>
+                        Label
+                        <input
+                          required
+                          value={address.label}
+                          onChange={(e) => setField("label", e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Full name
+                        <input
+                          required
+                          value={address.fullName}
+                          onChange={(e) => setField("fullName", e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Phone
+                        <input
+                          required
+                          value={address.phone}
+                          onChange={(e) => setField("phone", e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Address line 1
+                        <input
+                          required
+                          value={address.line1}
+                          onChange={(e) => setField("line1", e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Address line 2
+                        <input
+                          value={address.line2}
+                          onChange={(e) => setField("line2", e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        City
+                        <input
+                          required
+                          value={address.city}
+                          onChange={(e) => setField("city", e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        State
+                        <input
+                          required
+                          value={address.state}
+                          onChange={(e) => setField("state", e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Postal code
+                        <input
+                          required
+                          value={address.postalCode}
+                          onChange={(e) => setField("postalCode", e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Country
+                        <input
+                          required
+                          value={address.country}
+                          onChange={(e) => setField("country", e.target.value)}
+                        />
+                      </label>
+                    </div>
+                    {addresses.length > 0 && (
+                      <button
+                        type="button"
+                        className="text-link"
+                        onClick={() => setNewAddress(false)}
+                      >
+                        Use a saved address
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+            {checkoutStep === "cart" && (
+              <div
+                className="cart-product-list"
+                role="region"
+                aria-label="Products in your cart"
+                tabIndex={0}
+              >
+                {items.map((i) => (
+                  <article className="cart-item" key={i._id}>
+                    {i.image && <img src={i.image} alt={i.name} />}
+                    <div className="cart-item-info">
+                      <h3>{i.name}</h3>
+                      <p>₹{i.price}</p>
+                      <div className="qty-control">
+                        <button
+                          type="button"
+                          disabled={Boolean(payment)}
+                          onClick={() => change(i._id, i.qty - 1)}
+                          aria-label="Decrease quantity"
+                        >
+                          <Minus size={14} />
+                        </button>
+                        <span>{i.qty}</span>
+                        <button
+                          type="button"
+                          disabled={Boolean(payment)}
+                          onClick={() => change(i._id, i.qty + 1)}
+                          aria-label="Increase quantity"
+                        >
+                          <Plus size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      disabled={Boolean(payment)}
+                      onClick={() => remove(i._id)}
+                      aria-label={`Remove ${i.name}`}
+                    >
+                      <Trash2 size={17} />
+                    </button>
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
           <aside className="order-summary">
             <h2>Order summary</h2>
@@ -602,78 +760,82 @@ export default function Cart() {
               <span>Subtotal</span>
               <b>₹{total}</b>
             </div>
-            <section className="cart-coupon" aria-label="Apply a coupon">
-              <label htmlFor="cart-coupon-search">Coupon code</label>
-              {currentCoupon ? (
-                <div className="cart-coupon-applied">
-                  <span>
-                    <b>{currentCoupon.code}</b>
-                    <small>Coupon applied</small>
-                  </span>
-                  <button
-                    type="button"
-                    className="text-link"
-                    onClick={() => {
-                      setAppliedCoupon(null);
-                      setCouponSearch("");
-                      setCouponMessage("");
-                    }}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="cart-coupon-entry">
-                    <input
-                      id="cart-coupon-search"
-                      value={couponSearch}
-                      autoComplete="off"
-                      placeholder="Search or enter a code"
-                      onChange={(event) => {
-                        setCouponSearch(event.target.value.toUpperCase());
-                        setCouponMessage("");
-                      }}
-                    />
+            {checkoutStep === "cart" && (
+              <section className="cart-coupon" aria-label="Apply a coupon">
+                <label htmlFor="cart-coupon-search">Coupon code</label>
+                {currentCoupon ? (
+                  <div className="cart-coupon-applied">
+                    <span>
+                      <b>{currentCoupon.code}</b>
+                      <small>Coupon applied</small>
+                    </span>
                     <button
                       type="button"
-                      className="btn btn-outline"
-                      disabled={couponBusy || !couponSearch.trim()}
-                      onClick={() => applyCoupon()}
+                      className="text-link"
+                      onClick={() => {
+                        setAppliedCoupon(null);
+                        setCouponSearch("");
+                        setCouponMessage("");
+                      }}
                     >
-                      {couponBusy ? "Checking…" : "Apply"}
+                      Remove
                     </button>
                   </div>
-                  {couponSuggestions.length > 0 && (
-                    <div className="cart-coupon-suggestions">
-                      {couponSuggestions.map((coupon) => (
-                        <button
-                          type="button"
-                          key={coupon.code}
-                          onClick={() => applyCoupon(coupon.code)}
-                        >
-                          <span>
-                            <b>{coupon.code}</b>
-                            <small>
-                              {coupon.description ||
-                                (coupon.discountType === "percent"
-                                  ? `${coupon.value}% off`
-                                  : `₹${coupon.value} off`)}
-                            </small>
-                          </span>
-                          <strong>Save ₹{coupon.discountAmount.toFixed(2)}</strong>
-                        </button>
-                      ))}
+                ) : (
+                  <>
+                    <div className="cart-coupon-entry">
+                      <input
+                        id="cart-coupon-search"
+                        value={couponSearch}
+                        autoComplete="off"
+                        placeholder="Search or enter a code"
+                        onChange={(event) => {
+                          setCouponSearch(event.target.value.toUpperCase());
+                          setCouponMessage("");
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        disabled={couponBusy || !couponSearch.trim()}
+                        onClick={() => applyCoupon()}
+                      >
+                        {couponBusy ? "Checking…" : "Apply"}
+                      </button>
                     </div>
-                  )}
-                  {couponMessage && (
-                    <small className="cart-coupon-message" role="status">
-                      {couponMessage}
-                    </small>
-                  )}
-                </>
-              )}
-            </section>
+                    {couponSuggestions.length > 0 && (
+                      <div className="cart-coupon-suggestions">
+                        {couponSuggestions.map((coupon) => (
+                          <button
+                            type="button"
+                            key={coupon.code}
+                            onClick={() => applyCoupon(coupon.code)}
+                          >
+                            <span>
+                              <b>{coupon.code}</b>
+                              <small>
+                                {coupon.description ||
+                                  (coupon.discountType === "percent"
+                                    ? `${coupon.value}% off`
+                                    : `₹${coupon.value} off`)}
+                              </small>
+                            </span>
+                            <strong>
+                              Save ₹{coupon.discountAmount.toFixed(2)}
+                            </strong>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {couponMessage && (
+                      <small className="cart-coupon-message" role="status">
+                        {couponMessage}
+                      </small>
+                    )}
+                  </>
+                )}
+              </section>
+            )}
             {currentCoupon && (
               <div className="cart-coupon-discount">
                 <span>Coupon discount</span>
@@ -684,108 +846,168 @@ export default function Cart() {
               <span>Shipping</span>
               <span>
                 {selectedCourier
-                  ? `${selectedCourierLabel} · ₹${selectedCourier.rate.toFixed(2)}`
-                  : currentShippingQuote
-                    ? "Choose delivery"
-                    : "Shown after you continue"}
+                  ? checkoutStep === "confirmation"
+                    ? `${selectedCourierLabel} · ${selectedCourier.estimatedDays ? `${selectedCourier.estimatedDays} days · ` : ""}₹${selectedCourier.rate.toFixed(2)}`
+                    : `${selectedCourierLabel} · ₹${selectedCourier.rate.toFixed(2)}`
+                  : checkoutStep === "cart"
+                    ? quoteLoading
+                      ? "Checking options…"
+                      : canRequestShippingQuote
+                        ? "Loading options…"
+                        : "Complete address to check"
+                    : "Choose delivery"}
               </span>
             </div>
-            {busy && !currentShippingQuote && !payment && (
+            {quoteLoading && checkoutStep === "cart" && (
               <div className="delivery-loading" role="status" aria-live="polite">
                 <span className="delivery-loading-spinner" aria-hidden="true" />
                 <span>Checking delivery options for your location…</span>
               </div>
             )}
-            {currentShippingQuote && currentShippingQuote.couriers.length > 0 && (
-              <section className="delivery-options" aria-labelledby="delivery-options-title">
-                <div className="delivery-options-heading">
-                  <h3 id="delivery-options-title">Choose delivery</h3>
-                  <span>{currentShippingQuote.couriers.length} options</span>
-                </div>
-                {currentShippingQuote.couriers.map((courier) => {
-                  const isSelected = selectedCourierId === String(courier.id);
-                  const isLowest = courier.badges?.includes("Lowest price");
-                  const isFastest = courier.badges?.includes("Fastest");
-                  return (
-                    <label
-                      className={`delivery-option-card${isSelected ? " is-selected" : ""}`}
-                      key={courier.id}
-                    >
-                      <input
-                        type="radio"
-                        name="shippingCourier"
-                        value={courier.id}
-                        checked={isSelected}
-                        onChange={() => setSelectedCourierId(String(courier.id))}
-                      />
-                      <span className="delivery-option-main">
-                        <span className="delivery-option-name">
-                          {isLowest && isFastest
-                            ? "Lowest price · Fast delivery"
-                            : isFastest
-                              ? "Fast delivery"
-                              : "Lowest price"}
-                        </span>
-                        <span className="delivery-option-meta">
-                          {courier.estimatedDays
-                            ? `Estimated ${courier.estimatedDays} days`
-                            : "Delivery estimate unavailable"}
-                        </span>
-                      </span>
-                      <span className="delivery-option-price">
-                        ₹{courier.rate.toFixed(2)}
-                      </span>
-                    </label>
-                  );
-                })}
-              </section>
-            )}
-            {currentShippingQuote && !currentShippingQuote.couriers.length && (
-              <div className="delivery-unavailable" role="status">
-                <span className="delivery-unavailable-icon" aria-hidden="true">
-                  !
-                </span>
-                <div className="delivery-unavailable-content">
-                  <b>Delivery isn’t possible for this location</b>
-                  <span>
-                    We don’t currently have a courier service to this postcode.
-                    Try another address or contact the store for help.
-                  </span>
-                  <button
-                    type="button"
-                    className="text-link"
-                    onClick={() => {
-                      setShippingQuote(null);
-                      setSelectedCourierId("");
-                      setMessage("");
-                      setNewAddress(true);
-                    }}
-                  >
-                    Try another address
-                  </button>
-                </div>
+            {quoteError && checkoutStep === "cart" && (
+              <div className="delivery-loading" role="status">
+                <span>We couldn’t load delivery options.</span>
+                <button
+                  type="button"
+                  className="text-link"
+                  onClick={() => {
+                    requestedQuoteKey.current = "";
+                    setQuoteErrorKey("");
+                    setMessage("");
+                    setQuoteRetry((retry) => retry + 1);
+                  }}
+                >
+                  Try again
+                </button>
               </div>
             )}
+            {!canRequestShippingQuote &&
+              !currentShippingQuote &&
+              !quoteLoading &&
+              !quoteError &&
+              checkoutStep === "cart" && (
+                <div className="delivery-loading" role="status">
+                  <span>
+                    Complete your delivery address to see available delivery options.
+                  </span>
+                </div>
+              )}
+            {checkoutStep === "cart" &&
+              currentShippingQuote &&
+              currentShippingQuote.couriers.length > 0 && (
+                <section
+                  className="delivery-options"
+                  aria-labelledby="delivery-options-title"
+                >
+                  <div className="delivery-options-heading">
+                    <h3 id="delivery-options-title">Delivery options</h3>
+                    <span>{currentShippingQuote.couriers.length} options</span>
+                  </div>
+                  {currentShippingQuote.couriers.map((courier) => {
+                    const isSelected =
+                      selectedCourierId === String(courier.id);
+                    const isLowest = courier.badges?.includes("Lowest price");
+                    const isFastest = courier.badges?.includes("Fastest");
+                    return (
+                      <label
+                        className={`delivery-option-row${isSelected ? " is-selected" : ""}`}
+                        key={courier.id}
+                      >
+                        <input
+                          type="radio"
+                          name="shippingCourier"
+                          value={courier.id}
+                          checked={isSelected}
+                          onChange={() =>
+                            setSelectedCourierId(String(courier.id))
+                          }
+                        />
+                        <span className="delivery-option-main">
+                          <span className="delivery-option-name">
+                            {isLowest && isFastest
+                              ? "Lowest price · Fast delivery"
+                              : isFastest
+                                ? "Fast delivery"
+                                : "Lowest price"}
+                          </span>
+                          <span className="delivery-option-meta">
+                            {courier.estimatedDays
+                              ? `Estimated ${courier.estimatedDays} days`
+                              : "Delivery estimate unavailable"}
+                          </span>
+                        </span>
+                        <span className="delivery-option-price">
+                          ₹{courier.rate.toFixed(2)}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </section>
+              )}
+            {checkoutStep === "cart" &&
+              currentShippingQuote &&
+              !currentShippingQuote.couriers.length && (
+                <div className="delivery-unavailable" role="status">
+                  <span
+                    className="delivery-unavailable-icon"
+                    aria-hidden="true"
+                  >
+                    !
+                  </span>
+                  <div className="delivery-unavailable-content">
+                    <b>Delivery isn’t possible for this location</b>
+                    <span>
+                      We don’t currently have a courier service to this postcode.
+                      Try another address or contact the store for help.
+                    </span>
+                    <button
+                      type="button"
+                      className="text-link"
+                      onClick={() => {
+                        setShippingQuote(null);
+                        setSelectedCourierId("");
+                        setMessage("");
+                        setNewAddress(true);
+                      }}
+                    >
+                      Try another address
+                    </button>
+                  </div>
+                </div>
+              )}
             <div className="summary-total">
               <span>Total</span>
               <strong>₹{orderTotal.toFixed(2)}</strong>
             </div>
-            <h3 className="payment-heading">Payment method</h3>
-            <div className="payment-option payment-option-fixed">
-              <span>
-                <b>Pay online with Cashfree</b>
-                <small>UPI, cards and supported payment methods</small>
-              </span>
-            </div>
+            {checkoutStep === "confirmation" && (
+              <>
+                <h3 className="payment-heading">Payment</h3>
+                <div className="payment-option payment-option-fixed checkout-review-payment">
+                  <span>
+                    <b>Pay online with Cashfree</b>
+                    <small>Secure payment with UPI, cards and more</small>
+                  </span>
+                </div>
+              </>
+            )}
             {message && <p className="notice error">{message}</p>}
             <button
               className="btn class-flow-button class-flow-button--gold btn-full"
               disabled={
                 busy ||
-                Boolean(currentShippingQuote && !selectedCourier)
+                quoteLoading ||
+                (checkoutStep === "cart" &&
+                  (!currentShippingQuote || !selectedCourier)) ||
+                (checkoutStep === "confirmation" && !selectedCourier)
               }
             >
-              {busy ? "Please wait…" : "Continue"}
+              {busy
+                ? "Please wait…"
+                : quoteLoading
+                  ? "Loading delivery options…"
+                : checkoutStep === "confirmation"
+                  ? "Continue to payment"
+                  : "Continue"}
             </button>
           </aside>
         </form>

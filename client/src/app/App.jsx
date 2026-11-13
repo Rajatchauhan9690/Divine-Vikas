@@ -30,6 +30,10 @@ export default function App() {
         <Route path="orders" element={<Orders />} />
         <Route path="orders/:id" element={<Orders />} />
         <Route path="support" element={<Support />} />
+        <Route
+          path="sub-admin-invitation"
+          element={<SubAdminInvitation />}
+        />
         <Route element={<AuthLayout />}>
           <Route path="login" element={<Auth mode="login" />} />
           <Route path="register" element={<Auth mode="register" />} />

@@ -1,7 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap");
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 :root {
   font-family: "DM Sans", sans-serif;
   font-size: 17px;
@@ -242,13 +238,6 @@ h1 em {
   min-width: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-}
-.home-booking-actions.is-single {
-  grid-template-columns: minmax(0, 1fr);
-}
-.home-booking-actions.is-sub-admin .home-booking-card {
-  width: min(100%, 360px);
-  justify-self: center;
 }
 .home-booking-card {
   display: grid;
@@ -538,8 +527,10 @@ textarea {
 }
 .product-card {
   border: 1px solid #e8e2d7;
+  border-radius: 10px;
   background: #fffdf9;
   min-width: 0;
+  overflow: hidden;
   transition:
     box-shadow 0.25s,
     transform 0.25s;
@@ -1122,10 +1113,6 @@ textarea {
 .auth-route-transition .auth-form-wrap {
   align-self: center;
 }
-.auth-route-loading {
-  min-height: 100vh;
-  min-height: 100svh;
-}
 @keyframes auth-route-enter {
   from {
     opacity: 0;
@@ -1413,6 +1400,81 @@ textarea {
   gap: 20px;
   align-items: start;
 }
+.checkout-review-intro {
+  margin: -8px 0 22px;
+  color: #6f786f;
+  font-size: 15px;
+}
+.checkout-review-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.checkout-review-heading h2 {
+  margin-bottom: 12px;
+}
+.checkout-review-heading .text-link {
+  flex: 0 0 auto;
+}
+.checkout-address-review p {
+  margin: 0;
+  color: #647168;
+  font-size: 15px;
+  line-height: 1.75;
+}
+.checkout-address-review p strong {
+  color: #25352c;
+}
+.checkout-review-items {
+  display: grid;
+  gap: 12px;
+}
+.checkout-review-items .checkout-review-heading {
+  margin-bottom: 2px;
+}
+.checkout-review-items .checkout-review-heading h2 {
+  margin: 0;
+}
+.checkout-review-item {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-top: 1px solid #eee9df;
+}
+.checkout-review-item img {
+  width: 58px;
+  height: 58px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #f2eee5;
+}
+.checkout-review-item > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.checkout-review-item strong {
+  color: #29362f;
+  font-size: 14px;
+}
+.checkout-review-item small {
+  color: #788078;
+  font-size: 12px;
+}
+.checkout-review-item > b {
+  color: #29362f;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.checkout-review-payment {
+  border-color: #d7e3da;
+  border-radius: 10px;
+  background: #f7faf7;
+  padding: 14px;
+}
 .cart-items {
   display: grid;
   gap: 10px;
@@ -1434,6 +1496,7 @@ textarea {
   align-items: center;
   gap: 18px;
   border: 1px solid #e8e2d7;
+  border-radius: 10px;
   background: #fffdf9;
   padding: 14px;
 }
@@ -1476,6 +1539,7 @@ textarea {
 }
 .order-summary {
   border: 1px solid #e4ded2;
+  border-radius: 10px;
   background: #fffdf9;
   padding: 25px;
 }
@@ -1702,54 +1766,6 @@ textarea {
   min-height: 42px;
   padding: 0 15px;
   font-size: 14px;
-}
-.admin-management-menu {
-  margin: 30px 0;
-  border: 1px solid #e6e0d5;
-  background: #fffdf9;
-}
-.admin-management-heading {
-  padding: 20px 20px 0;
-}
-.admin-management-heading h2 {
-  margin: 0 0 6px;
-  font:
-    24px "Playfair Display",
-    serif;
-  color: #23382d;
-}
-.admin-management-heading p {
-  margin: 0;
-  color: #69736a;
-  font-size: 15px;
-}
-.admin-management-links {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  padding: 16px;
-}
-.admin-management-links > a {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  padding: 16px;
-  border: 1px solid #eee9df;
-  color: #315e44;
-}
-.admin-management-links > a > span {
-  display: grid;
-  flex: 1;
-  gap: 4px;
-}
-.admin-management-links b {
-  font-size: 16px;
-}
-.admin-management-links small {
-  color: #69736a;
-  font-size: 14px;
-  line-height: 1.4;
 }
 .admin-section-nav {
   display: flex;
@@ -2022,19 +2038,6 @@ textarea {
 .admin-booking-seat.pending {
   color: #946315;
 }
-.admin-booking-seat-groups {
-  display: grid;
-  gap: 14px;
-}
-.admin-booking-seat-group h4 {
-  margin: 0 0 8px;
-  color: #34443a;
-  font-size: 13px;
-}
-.admin-booking-seat-group h4 span {
-  color: #69736a;
-  font-weight: 500;
-}
 .admin-booking-session-detail {
   display: grid;
   gap: 20px;
@@ -2087,37 +2090,6 @@ textarea {
   border-radius: 999px;
   background: #fff;
   font-size: 14px;
-}
-.admin-booking-session-facts {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  padding: 0 clamp(16px, 3vw, 28px);
-}
-.admin-booking-session-facts > div {
-  display: grid;
-  gap: 9px;
-  min-width: 0;
-  padding: 15px;
-  border: 1px solid #eceee8;
-  border-radius: 9px;
-  background: #fbfcf9;
-}
-.admin-booking-session-facts > div > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: #69736a;
-  font-size: 12px;
-  font-weight: 600;
-}
-.admin-booking-session-facts > div > span svg {
-  color: #527a54;
-}
-.admin-booking-session-facts strong {
-  color: #23382d;
-  font-size: 15px;
-  overflow-wrap: anywhere;
 }
 .admin-booking-session-detail .admin-booking-counts {
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2187,80 +2159,11 @@ textarea {
   font-size: 12px;
   font-weight: 700;
 }
-.admin-booking-session-detail .admin-booking-seat-groups {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: start;
-  gap: 12px;
-  padding: 0 clamp(16px, 3vw, 28px) clamp(20px, 3vw, 28px);
-}
-.admin-booking-session-detail .admin-booking-seat-group {
-  min-width: 0;
-  min-height: 126px;
-  padding: 14px;
-  border: 1px solid #eceee8;
-  border-radius: 10px;
-  background: #fbfcf9;
-}
-.admin-booking-session-detail .admin-booking-seat-group.available {
-  border-color: #d9e8d8;
-}
-.admin-booking-session-detail .admin-booking-seat-group.booked {
-  border-color: #eedbd6;
-}
-.admin-booking-session-detail .admin-booking-seat-group.pending {
-  border-color: #ebdfc8;
-}
-.admin-booking-session-detail .admin-booking-seat-group h4 {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 0 0 13px;
-  color: #34443a;
-  font-size: 13px;
-}
-.admin-booking-seat-group-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
 .admin-booking-seat-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: #929b91;
-}
-.admin-booking-seat-group.available .admin-booking-seat-dot {
-  background: #47804f;
-}
-.admin-booking-seat-group.booked .admin-booking-seat-dot {
-  background: #a64c3c;
-}
-.admin-booking-seat-group.pending .admin-booking-seat-dot {
-  background: #b9852d;
-}
-.admin-booking-seat-group-count {
-  display: grid;
-  min-width: 23px;
-  height: 23px;
-  padding: 0 6px;
-  place-items: center;
-  border-radius: 50%;
-  background: #edf0e9;
-  color: #526357;
-  font-size: 11px;
-}
-.admin-booking-seat-group.available .admin-booking-seat-group-count {
-  background: #e8f2e7;
-  color: #315f3b;
-}
-.admin-booking-seat-group.booked .admin-booking-seat-group-count {
-  background: #f7e9e5;
-  color: #91483b;
-}
-.admin-booking-seat-group.pending .admin-booking-seat-group-count {
-  background: #f8f0df;
-  color: #8a6425;
 }
 .admin-booking-seat-list {
   display: flex;
@@ -2496,7 +2399,7 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
-.admin-booking-no-seats,
+
 .admin-bookings-empty {
   margin: 0;
   color: #69736a;
@@ -2804,52 +2707,12 @@ textarea {
 .admin-product-form > .btn {
   justify-self: start;
 }
-.admin-table-wrap {
-  overflow-x: auto;
-  border: 1px solid #e6e0d5;
-  background: #fffdf9;
-}
-.admin-table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
-  font-size: 14px;
-  min-width: 600px;
-}
-.admin-table th {
-  background: #f0eee5;
-  color: #4e5b50;
-  font-size: 13px;
-  letter-spacing: 0.5px;
-}
-.admin-table th,
-.admin-table td {
-  padding: 14px 17px;
-  border-bottom: 1px solid #eee9df;
-}
-.table-product {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
 .admin-product-form label {
   font-size: 14px;
 }
 .admin-product-form input,
 .admin-product-form select {
   font-size: 15px;
-}
-.table-product img {
-  width: 38px;
-  height: 38px;
-  object-fit: cover;
-}
-.table-delete {
-  background: transparent;
-  border: 0;
-  color: #a64c3c;
-  font-size: 14px;
-  font-weight: 700;
 }
 .table-empty {
   text-align: center;
@@ -3046,9 +2909,6 @@ textarea {
     padding: 10px;
     border-radius: 10px;
   }
-  .home-booking-actions.is-single {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .home-booking-icon {
     width: 30px;
     height: 30px;
@@ -3162,8 +3022,6 @@ textarea {
   .product-card {
     display: flex;
     flex-direction: column;
-    border-radius: 9px;
-    overflow: hidden;
     box-shadow: 0 5px 16px #263b2508;
   }
   .product-image {
@@ -3271,8 +3129,7 @@ textarea {
   .auth-art {
     display: none;
   }
-  .auth-panel > div,
-  .auth-route-loading {
+  .auth-panel > div {
     min-height: auto;
   }
   .auth-panel > div {
@@ -3388,7 +3245,6 @@ textarea {
   .cart-item {
     gap: 12px;
     padding: 12px;
-    border-radius: 9px;
   }
   .cart-product-list {
     max-height: min(50vh, 420px);
@@ -3504,10 +3360,6 @@ textarea {
   .admin-class-title-group {
     grid-template-columns: 1fr;
   }
-  .admin-table th,
-  .admin-table td {
-    padding: 12px;
-  }
   .admin-page {
     padding-top: 40px;
   }
@@ -3536,8 +3388,7 @@ textarea {
   .checkout-panel select,
   .account-form-grid input,
   .admin-order-fields input,
-  .admin-order-fields select,
-  .order-address-editor select {
+  .admin-order-fields select {
     min-height: 46px;
     font-size: 16px;
   }
@@ -3756,26 +3607,6 @@ textarea {
   font-size: 14px;
   font-weight: 700;
 }
-.class-meta {
-  display: grid;
-  gap: 12px;
-  margin: 18px 0;
-  padding: 17px 0;
-  border-top: 1px solid #eee9df;
-  border-bottom: 1px solid #eee9df;
-}
-.class-meta span {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #526357;
-  font-size: 14px;
-  line-height: 1.5;
-}
-.class-meta svg {
-  color: #a77a34;
-  flex: 0 0 auto;
-}
 .class-price {
   display: block;
   margin: 20px 0;
@@ -3814,65 +3645,6 @@ textarea {
   border-radius: 999px;
   background: linear-gradient(180deg, #fcf8ef, #f5eddd);
   color: #8a6425;
-}
-.class-booking-progress {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  max-width: 760px;
-  margin: 0 0 22px;
-  padding: 0;
-  list-style: none;
-}
-.class-booking-progress li {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  color: #858b82;
-  font-size: 13px;
-}
-.class-booking-progress li:not(:last-child)::after {
-  position: absolute;
-  top: 16px;
-  right: 12px;
-  left: 42px;
-  height: 1px;
-  background: #dcded5;
-  content: "";
-}
-.class-booking-progress li.complete:not(:last-child)::after {
-  background: #315e44;
-}
-.class-booking-progress li > span {
-  z-index: 1;
-  display: grid;
-  flex: 0 0 32px;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border: 1px solid #d5d9d0;
-  border-radius: 50%;
-  background: #fffdf9;
-  color: #69736a;
-  font-weight: 700;
-}
-.class-booking-progress li.current,
-.class-booking-progress li.complete {
-  color: #315e44;
-}
-.class-booking-progress li.current > span,
-.class-booking-progress li.complete > span {
-  border-color: #315e44;
-  background: #315e44;
-  color: #fff;
-}
-.class-booking-progress li b {
-  position: relative;
-  z-index: 1;
-  padding-right: 10px;
-  background: #fbf9f4;
-  font-weight: 600;
 }
 .class-seat-card {
   display: grid;
@@ -3918,20 +3690,6 @@ textarea {
   letter-spacing: 1.8px;
   box-shadow: 0 2px 6px #8a642510;
 }
-.class-detail-heading-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-}
-.class-detail-heading-row > div {
-  min-width: 0;
-}
-.class-detail-heading-row .class-resume-payment {
-  flex: 0 0 auto;
-  min-height: 46px;
-  white-space: nowrap;
-}
 .class-seat-summary h2 {
   margin: 16px 0 9px;
   font:
@@ -3948,33 +3706,6 @@ textarea {
   color: #69736a;
   font-size: 15px;
   line-height: 1.7;
-}
-.class-seat-card-details .class-meta {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin: 28px 0 22px;
-  padding: 20px 0;
-  border-top: 1px solid #eee9df;
-  border-bottom: 1px solid #eee9df;
-}
-.class-seat-card-details .class-meta span {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  min-height: 66px;
-  padding: 14px 16px;
-  border: 1px solid #e6e1d5;
-  border-radius: 9px;
-  background: linear-gradient(145deg, #fff, #fbfaf6);
-  box-shadow:
-    0 5px 14px #263b2509,
-    inset 0 1px 0 #ffffff;
-  font-size: 14px;
-}
-.class-seat-card-details .class-meta svg {
-  width: 19px;
-  height: 19px;
-  color: #a77a34;
 }
 .class-session-price-row {
   display: flex;
@@ -4031,28 +3762,6 @@ textarea {
   border: 1px solid #e6e0d5;
   border-radius: 5px;
   background: #fbf9f4;
-}
-.class-step-panel {
-  display: grid;
-  align-content: center;
-  justify-items: start;
-  gap: 14px;
-  min-width: 0;
-  padding: 24px;
-  background: #f4f4ec;
-}
-.class-step-panel h3 {
-  margin: 0;
-  color: #23382d;
-  font:
-    26px/1.3 "Playfair Display",
-    serif;
-}
-.class-step-panel > p {
-  margin: 0;
-  color: #69736a;
-  font-size: 15px;
-  line-height: 1.7;
 }
 .class-seat-picker .seat-grid {
   grid-template-columns: repeat(8, minmax(0, 1fr));
@@ -4138,47 +3847,6 @@ textarea {
 .class-contact-form small {
   font-size: 12px;
   font-weight: 400;
-}
-.class-contact-order-summary {
-  align-self: stretch;
-  padding: 20px;
-  border: 1px solid #e8e8de;
-  border-radius: 6px;
-  background: #f7f7f1;
-}
-.class-contact-order-summary h4 {
-  margin: 12px 0 5px;
-  color: #23382d;
-  font:
-    21px/1.3 "Playfair Display",
-    serif;
-}
-.class-contact-order-summary > p:not(.payment-hold-note) {
-  margin: 0;
-  color: #69736a;
-  font-size: 14px;
-}
-.class-contact-summary {
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid #dedfd5;
-  color: #315e44;
-  font-size: 14px;
-}
-.class-contact-summary strong {
-  color: #23382d;
-  font-size: 20px;
-}
-.class-contact-order-summary .payment-hold-note {
-  margin: 18px 0 0;
-  padding: 12px;
-  border-radius: 4px;
-  background: #fffdf9;
-  font-size: 13px;
 }
 .class-contact-actions {
   display: flex;
@@ -4365,47 +4033,6 @@ body.cashfree-checkout-active .footer {
 .seat-checkout .btn {
   flex: 0 0 auto;
 }
-.active-seat-holds {
-  margin: 20px 0;
-  padding: 20px;
-  border: 1px solid #e6e0d5;
-  background: #fffdf9;
-}
-.active-seat-holds h2 {
-  margin: 0 0 6px;
-  color: #23382d;
-  font:
-    22px "Playfair Display",
-    serif;
-}
-.active-seat-holds > p {
-  margin: 0 0 14px;
-  color: #69736a;
-  font-size: 14px;
-  line-height: 1.5;
-}
-.active-seat-hold {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding-top: 14px;
-  border-top: 1px solid #eee9df;
-}
-.active-seat-hold > div {
-  display: grid;
-  gap: 4px;
-}
-.active-seat-hold > div span {
-  color: #69736a;
-  font-size: 13px;
-}
-.class-page-footer {
-  margin-top: 24px;
-  color: #69736a;
-  font-size: 13px;
-  flex-shrink: 0;
-}
 .admin-unpriced-sessions {
   margin: 20px 0 32px;
   padding: 0;
@@ -4544,8 +4171,7 @@ body.cashfree-checkout-active .footer {
   font-size: 14px;
   line-height: 1.5;
 }
-.admin-class-session-details > .admin-class-price-editor,
-.admin-class-session-details > .admin-class-delete-hint {
+.admin-class-session-details > .admin-class-price-editor {
   margin-top: 14px;
   padding-top: 14px;
   border-top: 1px solid #eee9df;
@@ -4574,11 +4200,6 @@ body.cashfree-checkout-active .footer {
 }
 .admin-class-delete {
   color: #a64c3c;
-}
-.admin-class-delete-hint {
-  margin-bottom: 0;
-  color: #526357;
-  font-size: 14px;
 }
 .admin-class-start-field {
   min-width: 0;
@@ -4755,33 +4376,6 @@ body.cashfree-checkout-active .footer {
     gap: 22px;
     padding: 20px;
   }
-  .class-booking-progress {
-    gap: 4px;
-    margin-bottom: 16px;
-  }
-  .class-booking-progress li {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-    font-size: 11px;
-  }
-  .class-booking-progress li:not(:last-child)::after {
-    top: 16px;
-    right: 4px;
-    left: 38px;
-  }
-  .class-booking-progress li b {
-    padding: 0;
-    font-size: 11px;
-  }
-  .class-seat-card-details .class-meta {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    margin: 20px 0 14px;
-  }
-  .class-seat-card-details .class-meta span {
-    min-height: 48px;
-  }
   .class-exit-dialog {
     padding: 24px 20px 20px;
   }
@@ -4794,15 +4388,6 @@ body.cashfree-checkout-active .footer {
   .class-exit-actions .btn {
     flex: 0 0 auto;
     width: 100%;
-  }
-  .class-detail-heading-row {
-    align-items: flex-start;
-    gap: 12px;
-  }
-  .class-detail-heading-row .class-resume-payment {
-    min-height: 42px;
-    padding: 0 12px;
-    font-size: 13px;
   }
   .class-session-price-row {
     gap: 12px;
@@ -4835,9 +4420,6 @@ body.cashfree-checkout-active .footer {
   .class-contact-actions {
     grid-column: auto;
   }
-  .class-contact-order-summary {
-    padding: 16px;
-  }
   .class-contact-actions {
     flex-direction: row;
   }
@@ -4861,10 +4443,6 @@ body.cashfree-checkout-active .footer {
     padding: 0 8px;
     font-size: 13px;
     white-space: nowrap;
-  }
-  .admin-class-price-row {
-    grid-template-columns: 1fr;
-    gap: 10px;
   }
   .admin-class-price-editor {
     grid-template-columns: 1fr;
@@ -5301,16 +4879,6 @@ body.cashfree-checkout-active .footer {
   color: #69736a;
   font-size: 12px;
 }
-.class-resume-payment-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.class-resume-payment-actions .class-resume-payment {
-  min-height: 42px;
-  padding: 0 12px;
-  font-size: 13px;
-}
 .class-payment-panel .class-contact-actions {
   display: flex;
   justify-content: space-between;
@@ -5489,9 +5057,6 @@ body.cashfree-checkout-active .footer {
   .class-checkout-options {
     grid-template-columns: 1fr;
   }
-  .class-resume-payment-actions {
-    justify-content: flex-start;
-  }
 }
 
 /* Profile, checkout, order history and payment additions */
@@ -5548,13 +5113,6 @@ body.cashfree-checkout-active .footer {
   gap: 12px;
   width: 100%;
 }
-.profile-shortcut-grid.is-single {
-  grid-template-columns: minmax(0, 1fr);
-}
-.profile-shortcut-grid.is-sub-admin .profile-shortcut-card {
-  width: min(100%, 360px);
-  justify-self: center;
-}
 .profile-shortcut-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -5608,6 +5166,7 @@ body.cashfree-checkout-active .footer {
 .account-card,
 .checkout-panel {
   border: 1px solid #e6e0d5;
+  border-radius: 10px;
   background: #fffdf9;
   padding: 24px;
   margin-bottom: 20px;
@@ -5865,6 +5424,7 @@ body.cashfree-checkout-active .footer {
 .order-card {
   padding: 24px;
   border: 1px solid #e5dfd4;
+  border-radius: 10px;
   background: #fffdf9;
 }
 .order-list-card {
@@ -6016,91 +5576,6 @@ body.cashfree-checkout-active .footer {
   color: #69736a;
   line-height: 1.5;
 }
-.order-address-editor {
-  display: grid;
-  gap: 10px;
-  max-width: 520px;
-  margin: 14px 0;
-  padding: 16px;
-  border: 1px solid #e6e0d5;
-  background: #fffdf9;
-}
-@media (max-width: 520px) {
-  .order-new-address-fields {
-    grid-template-columns: 1fr;
-  }
-}
-.order-address-editor label {
-  color: #23382d;
-  font-size: 14px;
-  font-weight: 700;
-}
-.order-address-editor select {
-  width: 100%;
-  min-height: 44px;
-  padding: 8px 10px;
-  border: 1px solid #d8d1c5;
-  background: #fff;
-  color: #23382d;
-  font: inherit;
-}
-.order-previous-address {
-  display: grid;
-  gap: 5px;
-  padding: 12px;
-  border: 1px solid #e6e0d5;
-  background: #f7f4ed;
-}
-.order-previous-address b {
-  color: #23382d;
-  font-size: 13px;
-}
-.order-previous-address span {
-  color: #69736a;
-  font-size: 14px;
-  line-height: 1.5;
-}
-.order-address-modes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.order-address-modes .btn {
-  min-height: 40px;
-  padding: 0 12px;
-  font-size: 13px;
-}
-.order-new-address-fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-.order-new-address-fields label {
-  display: grid;
-  gap: 5px;
-}
-.order-new-address-fields input {
-  width: 100%;
-  min-height: 42px;
-  padding: 8px 10px;
-  border: 1px solid #d8d1c5;
-  background: #fff;
-  color: #23382d;
-  font: inherit;
-}
-.order-address-preview {
-  color: #69736a;
-  font-size: 14px;
-  line-height: 1.5;
-}
-.order-address-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.order-address-actions .btn {
-  min-height: 42px;
-}
 .orders-page .order-card .eyebrow {
   font-size: 15px;
   letter-spacing: 1.5px;
@@ -6208,7 +5683,7 @@ body.cashfree-checkout-active .footer {
   border-top: 1px solid #eee9df;
   padding: 15px 0;
 }
-.admin-return-settings,
+
 .admin-order-return,
 .admin-shiprocket,
 .admin-package-fields,
@@ -6217,23 +5692,14 @@ body.cashfree-checkout-active .footer {
   display: grid;
   gap: 10px;
 }
-.admin-return-settings {
-  grid-template-columns: minmax(180px, 260px) auto 1fr;
-  align-items: end;
-  padding: 14px;
-  margin: 14px 0;
-  background: #f7f6f1;
-  border: 1px solid #e8e5dc;
-  border-radius: 8px;
-}
-.admin-return-settings label,
+
 .admin-package-fields label,
 .order-return-action label {
   display: grid;
   gap: 6px;
   font-weight: 700;
 }
-.admin-return-settings input,
+
 .admin-package-fields input,
 .admin-shiprocket select,
 .order-return-action textarea {
@@ -6423,34 +5889,27 @@ body.cashfree-checkout-active .footer {
     transform: rotate(360deg);
   }
 }
-.delivery-option-card {
+.delivery-option-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid #dfe4e1;
-  border-radius: 8px;
-  background: #fff;
+  gap: 10px;
+  padding: 12px 2px;
+  border-bottom: 1px solid #e8e5de;
   cursor: pointer;
-  transition:
-    border-color 140ms ease,
-    background-color 140ms ease,
-    box-shadow 140ms ease;
 }
-.delivery-option-card:hover {
-  border-color: #9baa9f;
+.delivery-option-row:last-child {
+  border-bottom: 0;
 }
-.delivery-option-card.is-selected {
-  border-color: #176b48;
-  background: #f4faf6;
-  box-shadow: 0 0 0 1px #176b48;
+.delivery-option-row.is-selected .delivery-option-name {
+  color: #176b48;
 }
-.delivery-option-card input {
+.delivery-option-row input {
   width: 18px;
   height: 18px;
   margin: 0;
   accent-color: #176b48;
+  cursor: pointer;
 }
 .delivery-option-main {
   display: grid;
@@ -6465,25 +5924,6 @@ body.cashfree-checkout-active .footer {
 .delivery-option-meta {
   color: #69736d;
   font-size: 12px;
-}
-.delivery-option-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 3px;
-}
-.delivery-badge {
-  width: fit-content;
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: #e8f3ec;
-  color: #176b48;
-  font-size: 10px;
-  font-weight: 700;
-}
-.delivery-badge-fast {
-  background: #fff1d9;
-  color: #80530b;
 }
 .delivery-option-price {
   color: #202923;
@@ -7044,49 +6484,9 @@ body.cashfree-checkout-active .footer {
   color: #69736a;
   font-size: 14px;
 }
-.admin-order-overview {
-  display: grid;
-  grid-template-columns:
-    minmax(180px, 1.35fr) minmax(190px, 1fr) minmax(160px, 1fr)
-    auto;
-  align-items: center;
-  gap: 14px;
-  min-height: 48px;
-  margin-bottom: 14px;
-  cursor: pointer;
-  list-style: none;
-}
-.admin-order-overview::-webkit-details-marker {
-  display: none;
-}
-.admin-order-overview::after {
-  content: "Open order details";
-  color: #315e44;
-  font-size: 14px;
-  font-weight: 700;
-}
-.admin-order-row[open] .admin-order-overview::after {
-  content: "Close order details";
-}
 .admin-order-row > form {
   padding-top: 14px;
   border-top: 1px solid #eee9df;
-}
-.admin-order-overview b {
-  min-width: 0;
-  font-size: 16px;
-  line-height: 1.45;
-}
-.admin-order-overview span,
-.admin-order-overview small {
-  min-width: 0;
-  font-size: 14px;
-  color: #526357;
-  line-height: 1.5;
-}
-.admin-order-overview::after {
-  justify-self: end;
-  white-space: nowrap;
 }
 .admin-order-fields {
   display: grid;
@@ -7140,9 +6540,6 @@ body.cashfree-checkout-active .footer {
   grid-column: span 2;
 }
 @media (max-width: 800px) {
-  .admin-management-links {
-    grid-template-columns: 1fr;
-  }
   .account-grid {
     grid-template-columns: 1fr;
   }
@@ -7155,9 +6552,6 @@ body.cashfree-checkout-active .footer {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     width: 100%;
-  }
-  .profile-shortcut-grid.is-single {
-    grid-template-columns: minmax(0, 1fr);
   }
   .profile-shortcut-card {
     grid-template-columns: 30px minmax(0, 1fr);
@@ -7195,9 +6589,6 @@ body.cashfree-checkout-active .footer {
   .admin-product-overview {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .admin-order-overview {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 @media (max-width: 520px) {
   .admin-bookings-heading {
@@ -7226,10 +6617,6 @@ body.cashfree-checkout-active .footer {
     flex-direction: column;
     padding: 20px 16px;
   }
-  .admin-booking-session-facts {
-    grid-template-columns: 1fr;
-    padding: 0 16px;
-  }
   .admin-booking-session-detail .admin-booking-counts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     padding: 0 16px;
@@ -7238,10 +6625,6 @@ body.cashfree-checkout-active .footer {
     align-items: flex-start;
     flex-direction: column;
     margin: 0 16px;
-  }
-  .admin-booking-session-detail .admin-booking-seat-groups {
-    grid-template-columns: 1fr;
-    padding: 0 16px 18px;
   }
   .admin-booking-detail-body {
     padding: 0 16px 18px;
@@ -7300,10 +6683,6 @@ body.cashfree-checkout-active .footer {
     padding: 0 10px;
     font-size: 14px;
   }
-  .active-seat-hold {
-    align-items: stretch;
-    flex-direction: column;
-  }
   .admin-product-card {
     grid-template-columns: 1fr;
   }
@@ -7313,13 +6692,6 @@ body.cashfree-checkout-active .footer {
   }
   .admin-product-card .admin-row-actions {
     flex-wrap: wrap;
-  }
-  .admin-order-overview {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-  .admin-order-overview::after {
-    justify-self: start;
   }
   .admin-class-price-editor {
     grid-template-columns: 1fr;
@@ -7358,7 +6730,7 @@ body.cashfree-checkout-active .footer {
   .admin-order-fields {
     grid-template-columns: 1fr;
   }
-  .admin-return-settings,
+
   .admin-package-fields {
     grid-template-columns: 1fr;
   }
@@ -7375,17 +6747,6 @@ body.cashfree-checkout-active .footer {
   background: #eaf1f3;
   color: #456b78;
 }
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
 .admin-services {
   display: grid;
   gap: 20px;
@@ -7398,48 +6759,17 @@ body.cashfree-checkout-active .footer {
   color: #687368;
   font-size: 14px;
 }
-.admin-service-form {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  padding: 22px;
-  border: 1px solid #e6e0d5;
-  background: #fffdf9;
-}
-.admin-service-form h3,
-.admin-service-description,
-.admin-service-times,
-.admin-service-actions {
+
+.admin-service-times {
   grid-column: 1 / -1;
 }
-.admin-service-form h3,
+
 .admin-service-list > h3 {
   margin: 0;
   color: #26352b;
   font:
     24px "Playfair Display",
     serif;
-}
-.admin-service-form label {
-  display: grid;
-  gap: 7px;
-  color: #455148;
-  font-size: 13px;
-  font-weight: 600;
-}
-.admin-service-form input,
-.admin-service-form textarea {
-  width: 100%;
-  min-height: 42px;
-  padding: 10px 12px;
-  border: 1px solid #d8d2c7;
-  border-radius: 5px;
-  background: #fff;
-  color: #26352b;
-  font: inherit;
-}
-.admin-service-form textarea {
-  resize: vertical;
 }
 .admin-service-times {
   display: grid;
@@ -7540,12 +6870,6 @@ body.cashfree-checkout-active .footer {
     font-size: 14px;
   }
 }
-.admin-service-actions,
-.admin-service-card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
 .admin-service-list {
   display: grid;
   gap: 12px;
@@ -7581,25 +6905,6 @@ body.cashfree-checkout-active .footer {
     minmax(120px, 0.8fr);
   align-items: center;
   cursor: default;
-}
-.admin-service-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px;
-  border: 1px solid #e6e0d5;
-  background: #fffdf9;
-}
-.admin-service-card h3,
-.admin-service-card h4 {
-  margin: 0 0 6px;
-  color: #26352b;
-}
-.admin-service-card p {
-  margin: 5px 0 0;
-  color: #687368;
-  font-size: 13px;
 }
 .admin-service-booking {
   align-items: flex-start;
@@ -7647,12 +6952,6 @@ body.cashfree-checkout-active .footer {
   border: 1px dashed #d8d2c7;
   color: #687368;
   text-align: center;
-}
-.admin-invite-form > p {
-  grid-column: 1 / -1;
-  margin: 0;
-  color: #687368;
-  font-size: 13px;
 }
 .admin-subscription-plan-heading {
   display: flex;
@@ -8876,23 +8175,13 @@ body.cashfree-checkout-active .footer {
     gap: 8px;
     padding: 0;
   }
-  .admin-service-form {
-    grid-template-columns: 1fr;
-    padding: 16px;
-  }
-  .admin-service-form h3,
-  .admin-service-description,
-  .admin-service-times,
-  .admin-service-actions {
+
+  .admin-service-times {
     grid-column: 1;
   }
   .admin-service-times {
     grid-template-columns: 1fr;
     padding: 14px;
-  }
-  .admin-service-card {
-    align-items: flex-start;
-    flex-direction: column;
   }
   .admin-subadmin-account-card {
     padding: 15px;
@@ -9009,10 +8298,6 @@ body.cashfree-checkout-active .footer {
   margin: 0;
 }
 
-.sub-admin-invitation-card .subscription-steps {
-  margin: 14px 0;
-}
-
 .sub-admin-invitation-card .form-stack {
   gap: 10px;
 }
@@ -9047,13 +8332,6 @@ body.cashfree-checkout-active .footer {
 
 .sub-admin-invitation-card.is-subscription-review .form-stack {
   gap: 7px;
-}
-
-.subscription-steps {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin: 24px 0;
 }
 
 .subscription-step {
@@ -9639,10 +8917,6 @@ body.cashfree-checkout-active .footer {
     padding-top: 18px;
     padding-bottom: 18px;
   }
-
-  .sub-admin-invitation-card .subscription-steps {
-    margin: 14px 0;
-  }
 }
 
 @media (max-height: 650px) and (min-width: 521px) {
@@ -9658,10 +8932,6 @@ body.cashfree-checkout-active .footer {
   .sub-admin-invitation-card h1 {
     margin: 4px 0;
     font-size: 30px;
-  }
-
-  .sub-admin-invitation-card .subscription-steps {
-    margin: 8px 0;
   }
 
   .sub-admin-invitation-card .form-stack {

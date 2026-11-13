@@ -18,7 +18,6 @@ import { useCart } from "../features/cart/CartContext";
 import PaymentSuccess from "../components/PaymentSuccess";
 import ErrorToast from "../components/ErrorToast";
 import Seo from "../components/Seo";
-const stages = ["pending", "paid", "processing", "shipped", "delivered"];
 const cancellationWindowMs = 6 * 60 * 60 * 1000;
 const ORDERS_PER_PAGE = 6;
 function getOrderReturnWindowDays(order) {
@@ -187,29 +186,29 @@ export default function Orders() {
       setBusy("");
       return;
     }
-    async function requestReturn(order) {
-      setError("");
-      setBusy(order._id);
-      try {
-        await api.post(`/orders/${order._id}/return`, {
-          reason: returnReason,
-        });
-        setReturnOrderId("");
-        setReturnReason("");
-        setNotice("Return request submitted. The Admin will review it.");
-        await load();
-      } catch (e) {
-        setError(e.response?.data?.message || "Could not request a return.");
-      } finally {
-        setBusy("");
-      }
-    }
     try {
       await load();
     } catch {
       setError("Order cancelled, but the order list could not be refreshed.");
     }
     setBusy("");
+  }
+  async function requestReturn(order) {
+    setError("");
+    setBusy(order._id);
+    try {
+      await api.post(`/orders/${order._id}/return`, {
+        reason: returnReason,
+      });
+      setReturnOrderId("");
+      setReturnReason("");
+      setNotice("Return request submitted. The Admin will review it.");
+      await load();
+    } catch (e) {
+      setError(e.response?.data?.message || "Could not request a return.");
+    } finally {
+      setBusy("");
+    }
   }
   return (
     <section className="section orders-page">

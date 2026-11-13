@@ -1916,14 +1916,6 @@ test('admin can cancel paid Cashfree orders and a late success does not restore 
 
 test('product return windows are shown in details and all items must remain eligible for a return', async () => {
   const customer = await registerUser('product-return-window-customer@example.com');
-  const administrator = await registerUser('product-return-window-admin@example.com');
-  await User.updateOne(
-    { _id: administrator.user.id },
-    { $set: { role: 'admin' } },
-  );
-  const adminHeaders = {
-    Authorization: `Bearer ${administrator.accessToken}`,
-  };
   const oneDayProduct = await Product.create({
     name: 'One Day Return Product',
     price: 100,
