@@ -2259,18 +2259,27 @@ test('Cashfree product checkout creates an order only after successful payment',
       courier_name: 'Lowest Cost Courier',
       rate: 25,
       estimated_delivery_days: '6',
+      etd: '2026-11-19',
     },
     {
       courier_company_id: 8,
       courier_name: 'Fastest Courier',
       rate: 50,
       estimated_delivery_days: '2',
+      etd: '2026-11-15',
     },
     {
       courier_company_id: 9,
       courier_name: 'Middle Courier',
       rate: 40,
       estimated_delivery_days: '3',
+    },
+    {
+      courier_company_id: 10,
+      courier_name: 'Premium Express Courier',
+      rate: 60,
+      estimated_delivery_days: '2',
+      etd: '2026-11-15',
     },
   ];
   let cashfreeCreateAmount;
@@ -2368,18 +2377,23 @@ test('Cashfree product checkout creates an order only after successful payment',
         shippingAddress: address,
       })
       .expect(200);
-    assert.equal(shippingQuote.body.couriers[0].id, 7);
-    assert.equal(shippingQuote.body.couriers[0].rate, 25);
     assert.deepEqual(
       shippingQuote.body.couriers.map((courier) => courier.id),
-      [7, 8],
+      [8],
     );
     assert.equal(serviceabilityUrl.searchParams.get('weight'), '0.35');
     assert.equal(serviceabilityUrl.searchParams.get('length'), '10');
     assert.equal(serviceabilityUrl.searchParams.get('breadth'), '8');
     assert.equal(serviceabilityUrl.searchParams.get('height'), '4');
-    assert.deepEqual(shippingQuote.body.couriers[0].badges, ['Lowest price']);
-    assert.deepEqual(shippingQuote.body.couriers[1].badges, ['Fastest']);
+    assert.deepEqual(shippingQuote.body.couriers[0].badges, ['Fastest']);
+    assert.deepEqual(
+      shippingQuote.body.couriers.map((courier) => courier.estimatedDays),
+      ['2'],
+    );
+    assert.deepEqual(
+      shippingQuote.body.couriers.map((courier) => courier.estimatedDate),
+      ['2026-11-15'],
+    );
 
     await request(app)
       .post('/api/orders')
@@ -2400,8 +2414,8 @@ test('Cashfree product checkout creates an order only after successful payment',
         items: [{ product: product._id.toString(), quantity: 1 }],
         shippingAddress: address,
         paymentMethod: 'cashfree',
-        shippingCourierId: 7,
-        shippingRate: 26,
+        shippingCourierId: 8,
+        shippingRate: 51,
       })
       .expect(409)
       .expect(({ body }) => assert.equal(body.code, 'SHIPPING_QUOTE_CHANGED'));
@@ -2414,11 +2428,11 @@ test('Cashfree product checkout creates an order only after successful payment',
         items: [{ product: product._id.toString(), quantity: 1 }],
         shippingAddress: address,
         paymentMethod: 'cashfree',
-        shippingCourierId: 7,
-        shippingRate: 25,
+        shippingCourierId: 8,
+        shippingRate: 50,
       })
       .expect(201);
-    assert.equal(cashfreeCreateAmount, 275);
+    assert.equal(cashfreeCreateAmount, 300);
     assert.ok(checkout.body.attemptId);
     assert.equal(checkout.body.order, undefined);
     assert.match(
@@ -2441,9 +2455,9 @@ test('Cashfree product checkout creates an order only after successful payment',
     assert.equal(attempt.items[0].shippingWeightKg, 0.35);
     assert.equal(attempt.items[0].shippingLengthCm, 10);
     assert.equal(attempt.subtotal, 250);
-    assert.equal(attempt.shippingCost, 25);
-    assert.equal(attempt.total, 275);
-    assert.equal(attempt.shippingCourier.id, 7);
+    assert.equal(attempt.shippingCost, 50);
+    assert.equal(attempt.total, 300);
+    assert.equal(attempt.shippingCourier.id, 8);
     await sendWebhook(attempt.providerOrderId, 'FAILED', 'failed-product-payment');
     assert.equal(await Order.countDocuments({ user: customer.user.id }), 0);
     assert.equal((await Product.findById(product._id)).stock, 3);
@@ -2484,8 +2498,8 @@ test('Cashfree product checkout creates an order only after successful payment',
         items: [{ product: product._id.toString(), quantity: 1 }],
         shippingAddress: address,
         paymentMethod: 'cashfree',
-        shippingCourierId: 7,
-        shippingRate: 25,
+        shippingCourierId: 8,
+        shippingRate: 50,
         couponCode: 'SAVE10',
       })
       .expect(201);
@@ -2507,17 +2521,17 @@ test('Cashfree product checkout creates an order only after successful payment',
         items: [{ product: product._id.toString(), quantity: 1 }],
         shippingAddress: address,
         paymentMethod: 'cashfree',
-        shippingCourierId: 7,
-        shippingRate: 25,
+        shippingCourierId: 8,
+        shippingRate: 50,
         couponCode: 'SAVE10',
       })
       .expect(201);
-    assert.equal(cashfreeCreateAmount, 265);
+    assert.equal(cashfreeCreateAmount, 290);
     const paidAttempt = await ProductPaymentAttempt.findById(
       nextCheckout.body.attemptId,
     );
     assert.equal(paidAttempt.discountAmount, 10);
-    assert.equal(paidAttempt.total, 265);
+    assert.equal(paidAttempt.total, 290);
     const verification = await request(app)
       .post(`/api/orders/${paidAttempt._id}/verify-payment`)
       .set({ Authorization: `Bearer ${customer.accessToken}` })
@@ -2534,13 +2548,13 @@ test('Cashfree product checkout creates an order only after successful payment',
     assert.equal(orders[0].subtotal, 250);
     assert.equal(orders[0].discountAmount, 10);
     assert.equal(orders[0].coupon.code, 'SAVE10');
-    assert.equal(orders[0].shippingCost, 25);
-    assert.equal(orders[0].total, 265);
+    assert.equal(orders[0].shippingCost, 50);
+    assert.equal(orders[0].total, 290);
     const redeemedCoupon = await Coupon.findOne({ code: 'SAVE10' });
     assert.equal(redeemedCoupon.reservedCount, 0);
     assert.equal(redeemedCoupon.redeemedCount, 1);
-    assert.equal(orders[0].shipping.selectedCourierId, 7);
-    assert.equal(orders[0].shipping.quotedRate, 25);
+    assert.equal(orders[0].shipping.selectedCourierId, 8);
+    assert.equal(orders[0].shipping.quotedRate, 50);
     assert.equal(orders[0].items[0].returnWindowDays, 5);
     assert.equal(orders[0].items[0].returnable, true);
     assert.equal(orders[0].items[0].shippingWeightKg, 0.35);

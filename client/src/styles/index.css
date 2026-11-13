@@ -3384,7 +3384,7 @@ textarea {
   }
   .account-card input,
   .account-card select,
-  .checkout-panel input,
+  .checkout-panel input:not([type="radio"]),
   .checkout-panel select,
   .account-form-grid input,
   .admin-order-fields input,
@@ -5189,7 +5189,7 @@ body.cashfree-checkout-active .footer {
 }
 .account-card input,
 .account-card select,
-.checkout-panel input,
+.checkout-panel input:not([type="radio"]),
 .checkout-panel select,
 .account-form-grid input,
 .admin-order-fields input,
@@ -5203,7 +5203,7 @@ body.cashfree-checkout-active .footer {
 }
 .account-card input:focus,
 .account-card select:focus,
-.checkout-panel input:focus,
+.checkout-panel input:not([type="radio"]):focus,
 .checkout-panel select:focus {
   outline: 1px solid #789b83;
 }

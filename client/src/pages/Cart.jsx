@@ -21,6 +21,32 @@ const emptyAddress = {
   country: "India",
   landmark: "",
 };
+
+function getCourierLabel(courier) {
+  if (!courier) return "";
+  return courier.badges?.includes("Fastest")
+    ? "Fastest delivery"
+    : "Delivery estimate unavailable";
+}
+
+function getDeliveryEstimate(courier) {
+  if (courier.estimatedDate) {
+    const timestamp = Date.parse(courier.estimatedDate);
+    if (Number.isFinite(timestamp)) {
+      const expectedDate = new Intl.DateTimeFormat("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        timeZone: "Asia/Kolkata",
+      }).format(timestamp);
+      return `Expected by ${expectedDate}`;
+    }
+  }
+  return courier.estimatedDays
+    ? `Estimated ${courier.estimatedDays} days`
+    : "Delivery estimate unavailable";
+}
+
 export default function Cart() {
   const { items, remove, change, total } = useCart();
   const { user } = useAuth();
@@ -109,7 +135,7 @@ export default function Cart() {
           setShippingQuote({ key: shippingQuoteKey, couriers: data.couriers });
           const defaultCourier =
             data.couriers.find((courier) =>
-              courier.badges?.includes("Lowest price"),
+              courier.badges?.includes("Fastest"),
             ) || data.couriers[0];
           setSelectedCourierId(defaultCourier ? String(defaultCourier.id) : "");
         })
@@ -149,14 +175,7 @@ export default function Cart() {
   const selectedCourier = currentShippingQuote?.couriers.find(
     (courier) => String(courier.id) === selectedCourierId,
   );
-  const selectedCourierLabel = selectedCourier
-    ? selectedCourier.badges?.includes("Fastest") &&
-      !selectedCourier.badges?.includes("Lowest price")
-      ? "Fast delivery"
-      : selectedCourier.badges?.includes("Fastest")
-        ? "Lowest price · Fast delivery"
-        : "Lowest price"
-    : "";
+  const selectedCourierLabel = getCourierLabel(selectedCourier);
   const orderTotal = Number(
     (total - (currentCoupon?.discountAmount || 0) + (selectedCourier?.rate || 0)).toFixed(2),
   );
@@ -906,8 +925,6 @@ export default function Cart() {
                   {currentShippingQuote.couriers.map((courier) => {
                     const isSelected =
                       selectedCourierId === String(courier.id);
-                    const isLowest = courier.badges?.includes("Lowest price");
-                    const isFastest = courier.badges?.includes("Fastest");
                     return (
                       <label
                         className={`delivery-option-row${isSelected ? " is-selected" : ""}`}
@@ -924,16 +941,10 @@ export default function Cart() {
                         />
                         <span className="delivery-option-main">
                           <span className="delivery-option-name">
-                            {isLowest && isFastest
-                              ? "Lowest price · Fast delivery"
-                              : isFastest
-                                ? "Fast delivery"
-                                : "Lowest price"}
+                            {getCourierLabel(courier)}
                           </span>
                           <span className="delivery-option-meta">
-                            {courier.estimatedDays
-                              ? `Estimated ${courier.estimatedDays} days`
-                              : "Delivery estimate unavailable"}
+                            {getDeliveryEstimate(courier)}
                           </span>
                         </span>
                         <span className="delivery-option-price">

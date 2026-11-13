@@ -101,6 +101,7 @@ async function getDeliveryOptions(items, address, subtotal) {
       id: Number(courier.courier_company_id),
       name: String(courier.courier_name || "Shiprocket courier"),
       rate: Number(courier.rate),
+      estimatedDate: courier.etd ? String(courier.etd) : "",
       estimatedDays: courier.estimated_delivery_days
         ? String(courier.estimated_delivery_days)
         : "",
@@ -112,25 +113,19 @@ async function getDeliveryOptions(items, address, subtotal) {
         Number.isFinite(courier.rate) &&
         courier.rate >= 0,
     );
-  const options = new Map();
-  const addOption = (courier, badge) => {
-    if (!courier) return;
-    const option = options.get(courier.id) || { ...courier, badges: [] };
-    if (!option.badges.includes(badge)) option.badges.push(badge);
-    options.set(courier.id, option);
-  };
-  const cheapest = [...couriers].sort((a, b) => a.rate - b.rate)[0];
-  const fastest = couriers
+  const distinctCouriers = [...new Map(
+    couriers.map((courier) => [courier.id, courier]),
+  ).values()];
+  const couriersWithEstimates = distinctCouriers
     .map((courier) => ({
       courier,
       days: Number.parseFloat(courier.estimatedDays),
     }))
-    .filter(({ days }) => Number.isFinite(days) && days > 0)
-    .sort((a, b) => a.days - b.days || a.courier.rate - b.courier.rate)[0]
-    ?.courier;
-  addOption(cheapest, "Lowest price");
-  addOption(fastest, "Fastest");
-  return [...options.values()];
+    .filter(({ days }) => Number.isFinite(days) && days > 0);
+  const fastest = [...couriersWithEstimates].sort(
+    (a, b) => a.days - b.days || a.courier.rate - b.courier.rate,
+  )[0]?.courier;
+  return fastest ? [{ ...fastest, badges: ["Fastest"] }] : [];
 }
 
 export const quoteOrderShipping = asyncHandler(async (req, res) => {
