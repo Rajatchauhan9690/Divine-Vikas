@@ -131,6 +131,12 @@ const schema = new mongoose.Schema(
       },
       autoBookingError: { type: String, default: "" },
       autoBookingStartedAt: Date,
+      shipmentStatus: {
+        type: String,
+        enum: ["ready_to_ship", "pickup", "in_transit", "delivered", "rto", null],
+        default: null,
+      },
+      shipmentStatusAt: { type: Date, default: null },
       selectedCourierId: Number,
       selectedCourierName: { type: String, default: "" },
       quotedRate: { type: Number, min: 0, default: 0 },

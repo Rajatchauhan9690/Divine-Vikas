@@ -165,6 +165,8 @@ export async function automatePaidOrderShipping(orderId) {
     }
     order.shipping.autoBookingStatus = "booked";
     order.shipping.autoBookingError = "";
+    order.shipping.shipmentStatus = "ready_to_ship";
+    order.shipping.shipmentStatusAt = new Date();
     await order.save();
     return true;
   } catch (error) {

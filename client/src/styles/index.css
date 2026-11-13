@@ -359,6 +359,20 @@ h1 em {
   color: #8a6425;
   border-color: #8a6425;
 }
+.admin-shipping-label {
+  width: fit-content;
+  padding: 9px 13px;
+  border: 1px solid #315e44;
+  border-radius: 8px;
+  background: #edf3e9;
+  color: #315e44;
+  text-decoration: none;
+}
+.admin-shipping-label:hover {
+  border-color: #1c5947;
+  background: #e2eee3;
+  color: #1c5947;
+}
 input,
 select,
 textarea {
@@ -1213,7 +1227,8 @@ textarea {
 }
 .form-stack input,
 .admin-product-form input,
-.admin-product-form select {
+.admin-product-form select,
+.admin-product-form textarea {
   width: 100%;
   padding: 13px 14px;
   border: 1px solid #ddd8cc;
@@ -1223,8 +1238,14 @@ textarea {
   border-radius: 2px;
 }
 .form-stack input:focus,
-.admin-product-form input:focus {
+.admin-product-form input:focus,
+.admin-product-form select:focus,
+.admin-product-form textarea:focus {
   border-color: #789b83;
+}
+.admin-product-form [aria-invalid="true"] {
+  border-color: #a8322a;
+  background-color: #fff9f8;
 }
 .password-input {
   display: flex;
@@ -2486,9 +2507,9 @@ textarea {
 }
 .admin-product-overview {
   display: grid;
-  grid-template-columns: minmax(180px, 1.4fr) repeat(4, minmax(100px, 1fr));
+  grid-template-columns: minmax(160px, 0.8fr) minmax(0, 2fr);
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   min-width: 0;
 }
 .admin-product-identity {
@@ -2508,9 +2529,15 @@ textarea {
   object-fit: cover;
 }
 .admin-product-meta {
-  display: contents;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 .admin-product-meta span {
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: #526357;
   font-size: 14px;
 }
@@ -2729,8 +2756,30 @@ textarea {
   font-size: 14px;
 }
 .admin-product-form input,
-.admin-product-form select {
+.admin-product-form select,
+.admin-product-form textarea {
   font-size: 15px;
+}
+.admin-product-form textarea {
+  min-height: 110px;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.5;
+}
+.admin-product-dimensions {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.admin-product-group-title {
+  color: #526357;
+  font-size: 13px;
+  font-weight: 700;
+}
+.admin-product-dimension-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
 }
 .table-empty {
   text-align: center;
@@ -5346,6 +5395,32 @@ body.cashfree-checkout-active .footer {
 .admin-confirm-actions .btn-danger:hover:not(:disabled) {
   background: #892820;
 }
+.confirm-overlay.class-exit-overlay {
+  z-index: 2147483647;
+}
+.confirm-dialog.class-exit-dialog {
+  width: min(100%, 460px);
+  padding: 30px;
+  border: 1px solid #e5dbc6;
+  border-top: 4px solid #b9852d;
+  border-radius: 12px;
+  background: #fffdf9;
+  box-shadow: 0 24px 70px #101a1470;
+  animation: class-exit-dialog-in 200ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.confirm-dialog.class-exit-dialog h2 {
+  margin: 10px 0;
+  color: #23382d;
+  font:
+    26px/1.2 "Playfair Display",
+    serif;
+}
+.confirm-dialog.class-exit-dialog p {
+  margin: 0;
+  color: #69736a;
+  font-size: 14px;
+  line-height: 1.65;
+}
 .account-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5535,6 +5610,105 @@ body.cashfree-checkout-active .footer {
 }
 .order-card-details {
   padding-top: 4px;
+}
+.order-progress {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 18px 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.order-progress-step {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  min-width: 0;
+  text-align: center;
+}
+.order-progress-step:not(:last-child)::after {
+  position: absolute;
+  z-index: 0;
+  top: 16px;
+  left: calc(50% + 17px);
+  width: calc(100% - 34px);
+  height: 2px;
+  background: #dce2dc;
+  content: "";
+}
+.order-progress-step.is-complete:not(:last-child)::after {
+  background: #27804d;
+}
+.order-progress-marker {
+  z-index: 1;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 2px solid #cbd3cc;
+  border-radius: 50%;
+  background: #fffdf9;
+  color: #788078;
+  font-size: 13px;
+  font-weight: 700;
+}
+.order-progress-step.is-complete .order-progress-marker {
+  border-color: #27804d;
+  background: #27804d;
+  color: #fff;
+}
+.order-progress-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: #788078;
+  font-size: 13px;
+}
+.order-progress-step.is-complete .order-progress-copy {
+  color: #176b48;
+}
+.order-progress-step.is-returned .order-progress-marker {
+  border-color: #a8322a;
+  background: #a8322a;
+}
+.order-progress-step.is-returned .order-progress-copy {
+  color: #a8322a;
+}
+.order-progress-copy small {
+  color: #6f786f;
+  font-size: 11px;
+}
+.order-progress-cancelled {
+  margin: 18px 0 8px;
+  color: #a8322a;
+  font-weight: 700;
+}
+@media (max-width: 640px) {
+  .order-progress {
+    grid-template-columns: 1fr;
+    gap: 0;
+    margin: 18px 0;
+  }
+  .order-progress-step {
+    grid-template-columns: 34px minmax(0, 1fr);
+    justify-items: start;
+    align-items: start;
+    gap: 12px;
+    min-height: 58px;
+    text-align: left;
+  }
+  .order-progress-step:not(:last-child)::after {
+    top: 34px;
+    left: 16px;
+    width: 2px;
+    height: calc(100% - 34px);
+  }
+  .order-progress-copy {
+    padding-top: 8px;
+  }
 }
 .order-details-back {
   display: inline-flex;
@@ -6611,7 +6785,8 @@ body.cashfree-checkout-active .footer {
     width: 100%;
   }
   .admin-product-overview {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 }
 @media (max-width: 520px) {
@@ -6713,6 +6888,13 @@ body.cashfree-checkout-active .footer {
   .admin-product-overview {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+  .admin-product-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .admin-product-dimension-fields {
+    grid-template-columns: 1fr;
+    gap: 12px;
   }
   .admin-product-card .admin-row-actions {
     flex-wrap: wrap;

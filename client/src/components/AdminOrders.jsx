@@ -2,13 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  Package,
   Search,
   XCircle,
 } from "lucide-react";
 import { api } from "../services/api";
 import AdminToast from "./AdminToast";
 import AdminCardSkeleton from "./AdminCardSkeleton";
+import AdminConfirmDialog from "./AdminConfirmDialog";
 const statuses = ["pending", "paid", "processing", "shipped", "delivered"];
+const statusOrder = ["pending", "paid", "processing", "shipped", "delivered"];
 const orderFilters = [
   { label: "All", value: "" },
   { label: "Pending", value: "pending" },
@@ -351,6 +354,7 @@ function OrderRow({
     .find((history) => history.status === "cancelled")?.by;
   const returnStatus = order.returnRequest?.status || "none";
   const deliveredAt = order.deliveredAt ? new Date(order.deliveredAt) : null;
+  const currentStatusRank = statusOrder.indexOf(order.status);
   useEffect(() => {
     setStatus(order.status);
   }, [order.status]);
@@ -370,6 +374,28 @@ function OrderRow({
   }
   return (
     <article className="admin-order-row">
+      {confirmCancel && (
+        <AdminConfirmDialog
+          title={`Cancel order #${String(order._id).slice(-8).toUpperCase()}?`}
+          description={`Cancel this order? Reserved stock will be restored.${order.paymentMethod === "cashfree" && order.paymentStatus === "paid" ? " An automatic Cashfree refund must be accepted before cancellation can complete." : ""}`}
+          confirmLabel="Confirm cancellation"
+          busyLabel="Cancelling…"
+          eyebrow="ORDER CANCELLATION"
+          icon={<Package size={23} />}
+          overlayClassName="class-exit-overlay confirm-overlay"
+          dialogClassName="class-exit-dialog confirm-dialog"
+          actionsClassName="class-exit-actions"
+          cancelLabel="Keep order"
+          cancelClassName="btn class-flow-button class-flow-button--green"
+          confirmClassName="btn class-flow-button class-flow-button--danger"
+          role="alertdialog"
+          busy={busy}
+          onCancel={() => setConfirmCancel(false)}
+          onConfirm={async () => {
+            if (await cancel(order)) setConfirmCancel(false);
+          }}
+        />
+      )}
       <header className="admin-order-detail-heading">
         <div>
           <span className="admin-order-card-id">
@@ -459,59 +485,39 @@ function OrderRow({
                   cancelled
                 </option>
               )}
-              {statuses.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
+              {statuses
+                .map((s) => (
+                  <option
+                    key={s}
+                    disabled={
+                      currentStatusRank < 0 ||
+                      statusOrder.indexOf(s) < currentStatusRank
+                    }
+                  >
+                    {s}
+                  </option>
+                ))}
             </select>
           </label>
           <div className="admin-order-actions">
             <button
               className="btn btn-dark"
-              disabled={busy || order.status === "cancelled"}
+              disabled={
+                busy || order.status === "cancelled" || status === order.status
+              }
             >
               {busy ? "Saving…" : "Save order"}
             </button>
             {["pending", "paid", "processing"].includes(order.status) && (
-              <>
-                {!confirmCancel ? (
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    disabled={busy}
-                    onClick={() => setConfirmCancel(true)}
-                  >
-                    <XCircle size={16} />
-                    Cancel order
-                  </button>
-                ) : (
-                  <div className="admin-cancel-confirm">
-                    <p>
-                      Cancel this order? Reserved stock will be restored.
-                      {order.paymentMethod === "cashfree" &&
-                        order.paymentStatus === "paid" &&
-                        " An automatic Cashfree refund must be accepted before cancellation can complete."}
-                    </p>
-                    <button
-                      type="button"
-                      className="btn btn-danger"
-                      disabled={busy}
-                      onClick={async () => {
-                        if (await cancel(order)) setConfirmCancel(false);
-                      }}
-                    >
-                      {busy ? "Cancelling…" : "Confirm cancellation"}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-outline"
-                      disabled={busy}
-                      onClick={() => setConfirmCancel(false)}
-                    >
-                      Keep order
-                    </button>
-                  </div>
-                )}
-              </>
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={busy}
+                onClick={() => setConfirmCancel(true)}
+              >
+                <XCircle size={16} />
+                Cancel order
+              </button>
             )}
           </div>
           {returnStatus !== "none" && (
@@ -586,7 +592,7 @@ function OrderRow({
                 )}
                 {order.shipping?.labelUrl ? (
                   <a
-                    className="text-link"
+                    className="text-link admin-shipping-label"
                     href={order.shipping.labelUrl}
                     target="_blank"
                     rel="noreferrer"

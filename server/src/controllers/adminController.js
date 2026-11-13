@@ -361,6 +361,8 @@ export const createOrderShipment = asyncHandler(async (req, res) => {
     await order.save();
   }
   order.shipping.package = packageData;
+  order.shipping.shipmentStatus = "ready_to_ship";
+  order.shipping.shipmentStatusAt = new Date();
 
   if (!order.tracking?.trackingNumber) {
     const awb = await assignShiprocketCourier(

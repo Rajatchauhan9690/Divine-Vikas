@@ -470,9 +470,9 @@ export default function Cart() {
         )}
       {showPaymentExitConfirm &&
         createPortal(
-          <div className="class-exit-overlay">
+          <div className="class-exit-overlay confirm-overlay">
             <section
-              className="class-exit-dialog"
+              className="class-exit-dialog confirm-dialog"
               role="alertdialog"
               aria-modal="true"
               aria-labelledby="cart-payment-exit-title"
@@ -487,17 +487,17 @@ export default function Cart() {
                 You can continue paying now or exit checkout and return to your
                 bag.
               </p>
-              <div className="class-exit-actions">
+              <div className="class-exit-actions inline-actions admin-confirm-actions">
                 <button
                   type="button"
-                  className="btn class-flow-button class-flow-button--green"
+                  className="btn btn-outline"
                   onClick={() => setShowPaymentExitConfirm(false)}
                 >
                   Continue payment
                 </button>
                 <button
                   type="button"
-                  className="btn class-flow-button class-flow-button--danger"
+                  className="btn btn-danger"
                   onClick={() => {
                     setShowPaymentExitConfirm(false);
                     setCheckoutActive(false);

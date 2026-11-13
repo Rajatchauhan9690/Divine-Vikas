@@ -706,64 +706,6 @@ export default function Admin() {
                 )}
               </label>
               <label>
-                Shipping weight (kg)
-                <input
-                  type="number"
-                  min="0.001"
-                  max="100"
-                  step="0.001"
-                  aria-invalid={Boolean(productErrors.shippingWeightKg)}
-                  aria-describedby="product-shipping-weight-help"
-                  value={form.shippingWeightKg}
-                  onChange={(e) =>
-                    updateProductField("shippingWeightKg", e.target.value)
-                  }
-                />
-                <small
-                  id="product-shipping-weight-help"
-                  className={
-                    productErrors.shippingWeightKg
-                      ? "admin-field-error"
-                      : "admin-field-help"
-                  }
-                  aria-live="polite"
-                >
-                  {productValidationAttempted && productErrors.shippingWeightKg
-                    ? productErrors.shippingWeightKg
-                    : "Required for checkout delivery quotes. Enter the packed weight of one product in kg."}
-                </small>
-              </label>
-              {[
-                ["shippingLengthCm", "Length (cm)"],
-                ["shippingBreadthCm", "Breadth (cm)"],
-                ["shippingHeightCm", "Height (cm)"],
-              ].map(([field, label]) => (
-                <label key={field}>
-                    Product {label}
-                    <input
-                      type="number"
-                      min="0.1"
-                      max="1000"
-                      step="0.1"
-                      aria-invalid={Boolean(productErrors.shippingDimensions)}
-                      aria-describedby="product-shipping-dimensions-help"
-                      value={form[field]}
-                      onChange={(event) =>
-                        updateProductField(field, event.target.value)
-                      }
-                    />
-                </label>
-              ))}
-              <small
-                id="product-shipping-dimensions-help"
-                className={`admin-field-help wide${productErrors.shippingDimensions ? " admin-field-error" : ""}`}
-                aria-live="polite"
-              >
-                {productValidationAttempted && productErrors.shippingDimensions
-                    ? productErrors.shippingDimensions
-                    : "Optional, but required for automatic shipping. Enter the packed dimensions of one product; all three must be provided together. Automatic orders stack items vertically."}
-              </small>
-              <label>
                 Return window (days)
                 <input
                   type="number"
@@ -822,6 +764,83 @@ export default function Admin() {
                 />{" "}
                 Non-returnable
               </label>
+              <label>
+                Shipping weight (kg)
+                <input
+                  type="number"
+                  min="0.001"
+                  max="100"
+                  step="0.001"
+                  aria-invalid={Boolean(productErrors.shippingWeightKg)}
+                  aria-describedby="product-shipping-weight-help"
+                  value={form.shippingWeightKg}
+                  onChange={(e) =>
+                    updateProductField("shippingWeightKg", e.target.value)
+                  }
+                />
+                <small
+                  id="product-shipping-weight-help"
+                  className={
+                    productErrors.shippingWeightKg
+                      ? "admin-field-error"
+                      : "admin-field-help"
+                  }
+                  aria-live="polite"
+                >
+                  {productValidationAttempted && productErrors.shippingWeightKg
+                    ? productErrors.shippingWeightKg
+                    : "Optional; required for checkout delivery quotes. Enter the packed weight of one product in kg."}
+                </small>
+              </label>
+              <div className="admin-product-dimensions wide">
+                <span className="admin-product-group-title">
+                  Packed dimensions (cm)
+                </span>
+                <div className="admin-product-dimension-fields">
+                  {[
+                    ["shippingLengthCm", "Length"],
+                    ["shippingBreadthCm", "Breadth"],
+                    ["shippingHeightCm", "Height"],
+                  ].map(([field, label]) => (
+                    <label key={field}>
+                      {label}
+                      <input
+                        type="number"
+                        min="0.1"
+                        max="1000"
+                        step="0.1"
+                        aria-invalid={Boolean(productErrors.shippingDimensions)}
+                        aria-describedby="product-shipping-dimensions-help"
+                        value={form[field]}
+                        onChange={(event) =>
+                          updateProductField(field, event.target.value)
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+                <small
+                  id="product-shipping-dimensions-help"
+                  className={
+                    productValidationAttempted &&
+                    productErrors.shippingDimensions
+                      ? "admin-field-error"
+                      : "admin-field-help"
+                  }
+                  aria-live="polite"
+                  role={
+                    productValidationAttempted &&
+                    productErrors.shippingDimensions
+                      ? "alert"
+                      : undefined
+                  }
+                >
+                  {productValidationAttempted &&
+                  productErrors.shippingDimensions
+                    ? productErrors.shippingDimensions
+                    : "Optional, but required for automatic shipping. Enter all three packed dimensions; automatic orders stack items vertically."}
+                </small>
+              </div>
               <label className="wide">
                 Product image
                 <input
@@ -886,8 +905,9 @@ export default function Admin() {
               </label>
               <label className="wide">
                 Description
-                <input
+                <textarea
                   required
+                  rows="4"
                   maxLength="3000"
                   aria-invalid={Boolean(productErrors.description)}
                   aria-describedby={
@@ -931,20 +951,20 @@ export default function Admin() {
                     <b>{p.name}</b>
                   </div>
                   <div className="admin-product-meta">
-                    <span>{p.category}</span>
-                    <span>₹{p.price}</span>
-                    <span>{p.stock} in stock</span>
+                    <span title="Category">{p.category}</span>
+                    <span title="Price">₹{p.price}</span>
+                    <span title="Stock">{p.stock} in stock</span>
                     <span>
                       {p.shippingWeightKg
-                        ? `${p.shippingWeightKg} kg packed shipping weight`
-                        : "Shipping weight missing — checkout delivery unavailable"}
+                        ? `Weight ${p.shippingWeightKg} kg`
+                        : "Weight unavailable"}
                     </span>
                     <span>
                       {p.shippingLengthCm &&
                       p.shippingBreadthCm &&
                       p.shippingHeightCm
-                        ? `${p.shippingLengthCm} × ${p.shippingBreadthCm} × ${p.shippingHeightCm} cm packed dimensions`
-                        : "Shipping dimensions missing — automatic booking unavailable"}
+                        ? `Size ${p.shippingLengthCm} × ${p.shippingBreadthCm} × ${p.shippingHeightCm} cm`
+                        : "Size unavailable"}
                     </span>
                     <span>
                       {p.returnable === false

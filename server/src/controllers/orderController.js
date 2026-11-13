@@ -790,7 +790,17 @@ export const adminUpdateOrder = asyncHandler(async (req, res) => {
   ];
   if (req.body.status && !allowed.includes(req.body.status))
     throw new AppError("Invalid order status", 400, "INVALID_ORDER_STATUS");
-  if (req.body.status) {
+  const statusOrder = ["pending", "paid", "processing", "shipped", "delivered"];
+  if (
+    req.body.status &&
+    statusOrder.indexOf(req.body.status) < statusOrder.indexOf(order.status)
+  )
+    throw new AppError(
+      "Order status cannot move backwards",
+      409,
+      "ORDER_STATUS_CANNOT_REGRESS",
+    );
+  if (req.body.status && req.body.status !== order.status) {
     if (
       order.paymentMethod === "cashfree" &&
       req.body.status === "paid" &&
@@ -802,8 +812,18 @@ export const adminUpdateOrder = asyncHandler(async (req, res) => {
         "PAYMENT_NOT_VERIFIED",
       );
     order.status = req.body.status;
+    if (req.body.status === "shipped" && !order.shipping?.shipmentStatus) {
+      order.shipping ||= {};
+      order.shipping.shipmentStatus = "in_transit";
+      order.shipping.shipmentStatusAt = new Date();
+    }
     if (req.body.status === "delivered" && !order.deliveredAt)
       order.deliveredAt = new Date();
+    if (req.body.status === "delivered") {
+      order.shipping ||= {};
+      order.shipping.shipmentStatus = "delivered";
+      order.shipping.shipmentStatusAt ||= order.deliveredAt;
+    }
     order.statusHistory.push({
       status: order.status,
       note: String(req.body.note || `Status updated to ${order.status}`).slice(
@@ -850,17 +870,44 @@ export const shiprocketWebhook = asyncHandler(async (req, res) => {
   const order = await Order.findOne({ "tracking.trackingNumber": awb });
   if (!order) return res.json({ success: true, ignored: true });
   const normalized = rawStatus.toLowerCase();
-  const nextStatus =
-    /out for delivery/.test(normalized)
-      ? "shipped"
+  const shipmentStatus =
+    /\brto\b|return to origin|returning to origin/.test(normalized)
+      ? "rto"
       : /\bdelivered\b/.test(normalized)
         ? "delivered"
-        : /cancel|rto|return to origin/.test(normalized)
-          ? ""
-          : /transit|pickup|manifest|shipped/.test(normalized)
-            ? "shipped"
-            : "";
+        : /in transit|out for delivery|shipped/.test(normalized)
+          ? "in_transit"
+          : /pick[\s-]?up|picked up|collected/.test(normalized)
+            ? "pickup"
+            : /ready to ship|label generated|manifest generated/.test(normalized)
+              ? "ready_to_ship"
+              : "";
+  const nextStatus =
+    shipmentStatus === "delivered"
+      ? "delivered"
+      : ["pickup", "in_transit"].includes(shipmentStatus)
+        ? "shipped"
+        : "";
   const note = `Shiprocket tracking update: ${rawStatus}`.slice(0, 300);
+  if (shipmentStatus) {
+    const stageRank = {
+      ready_to_ship: 1,
+      pickup: 2,
+      in_transit: 3,
+      delivered: 4,
+    };
+    const currentRank = stageRank[order.shipping?.shipmentStatus] || 0;
+    const nextRank = stageRank[shipmentStatus] || 0;
+    if (
+      shipmentStatus === "rto" ||
+      (order.shipping?.shipmentStatus !== "rto" &&
+        (shipmentStatus === "delivered" || nextRank >= currentRank))
+    ) {
+      order.shipping ||= {};
+      order.shipping.shipmentStatus = shipmentStatus;
+      order.shipping.shipmentStatusAt = new Date();
+    }
+  }
   if (
     nextStatus &&
     order.status !== "cancelled" &&

@@ -1594,6 +1594,48 @@ test('admin product and order list endpoints return paginated results', async ()
   );
 });
 
+test('admin order status cannot be moved backwards', async () => {
+  const customer = await registerUser('order-status-customer@example.com');
+  const administrator = await registerUser('order-status-admin@example.com');
+  await User.updateOne(
+    { _id: administrator.user.id },
+    { $set: { role: 'admin' } },
+  );
+  const order = await Order.create({
+    user: customer.user.id,
+    items: [],
+    total: 250,
+    shippingAddress: {
+      fullName: 'Test User',
+      phone: '9876543210',
+      line1: 'Test Road',
+      city: 'Pune',
+      state: 'Maharashtra',
+      postalCode: '411001',
+    },
+    paymentMethod: 'cashfree',
+    paymentStatus: 'paid',
+    status: 'shipped',
+  });
+  const headers = {
+    Authorization: `Bearer ${administrator.accessToken}`,
+  };
+
+  await request(app)
+    .patch(`/api/orders/${order._id}/status`)
+    .set(headers)
+    .send({ status: 'pending' })
+    .expect(409);
+  assert.equal((await Order.findById(order._id)).status, 'shipped');
+
+  const delivered = await request(app)
+    .patch(`/api/orders/${order._id}/status`)
+    .set(headers)
+    .send({ status: 'delivered' })
+    .expect(200);
+  assert.equal(delivered.body.order.status, 'delivered');
+});
+
 test('customers may cancel eligible orders within six hours and stock is restored once', async () => {
   const customer = await registerUser('order-cancel-customer@example.com');
   const product = await Product.create({
@@ -2178,6 +2220,22 @@ test('Shiprocket tracking webhook records delivery and missing setup fails clear
     await request(app)
       .post('/api/courier-updates')
       .set('x-api-key', 'test-webhook-token')
+      .send({ awb: 'SR-TEST-AWB', current_status: 'PICKUP SCHEDULED' })
+      .expect(200);
+    const pickupScheduled = await Order.findById(order._id);
+    assert.equal(pickupScheduled.shipping.shipmentStatus, 'pickup');
+
+    await request(app)
+      .post('/api/courier-updates')
+      .set('x-api-key', 'test-webhook-token')
+      .send({ awb: 'SR-TEST-AWB', current_status: 'IN TRANSIT' })
+      .expect(200);
+    const inTransit = await Order.findById(order._id);
+    assert.equal(inTransit.shipping.shipmentStatus, 'in_transit');
+
+    await request(app)
+      .post('/api/courier-updates')
+      .set('x-api-key', 'test-webhook-token')
       .send({ awb: 'SR-TEST-AWB', current_status: 'OUT FOR DELIVERY' })
       .expect(200);
     const outForDelivery = await Order.findById(order._id);
@@ -2190,8 +2248,28 @@ test('Shiprocket tracking webhook records delivery and missing setup fails clear
       .expect(200);
     const delivered = await Order.findById(order._id);
     assert.equal(delivered.status, 'delivered');
+    assert.equal(delivered.shipping.shipmentStatus, 'delivered');
     assert.ok(delivered.deliveredAt);
     assert.match(delivered.statusHistory.at(-1).note, /Shiprocket tracking update/);
+    const returnOrder = await Order.create({
+      user: administrator.user.id,
+      items: [{ product: product._id, name: product.name, price: 250, quantity: 1 }],
+      total: 250,
+      shippingAddress: order.shippingAddress,
+      paymentMethod: 'cashfree',
+      paymentStatus: 'paid',
+      status: 'shipped',
+      tracking: { trackingNumber: 'SR-TEST-RTO' },
+      payment: { providerOrderId: `DV${new mongoose.Types.ObjectId()}` },
+    });
+    await request(app)
+      .post('/api/courier-updates')
+      .set('x-api-key', 'test-webhook-token')
+      .send({ awb: 'SR-TEST-RTO', current_status: 'RTO INITIATED' })
+      .expect(200);
+    const rto = await Order.findById(returnOrder._id);
+    assert.equal(rto.shipping.shipmentStatus, 'rto');
+    assert.equal(rto.status, 'shipped');
     const shipmentOrder = await Order.create({
       user: administrator.user.id,
       items: [{ product: product._id, name: product.name, price: 250, quantity: 1 }],
@@ -3755,6 +3833,7 @@ test('paid customer checkout automatically books shipment visible to admin', asy
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
     assert.equal(bookedOrder.shipping.autoBookingStatus, 'booked');
+    assert.equal(bookedOrder.shipping.shipmentStatus, 'ready_to_ship');
     assert.equal(bookedOrder.status, 'processing');
     assert.equal(bookedOrder.tracking.trackingNumber, 'TEST-AWB-456');
     assert.equal(bookedOrder.shipping.labelUrl, 'https://labels.example.test/test.pdf');

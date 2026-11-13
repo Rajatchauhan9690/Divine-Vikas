@@ -17,9 +17,140 @@ import { useAuth } from "../features/auth/AuthContext";
 import { useCart } from "../features/cart/CartContext";
 import PaymentSuccess from "../components/PaymentSuccess";
 import ErrorToast from "../components/ErrorToast";
+import AdminConfirmDialog from "../components/AdminConfirmDialog";
 import Seo from "../components/Seo";
 const cancellationWindowMs = 6 * 60 * 60 * 1000;
 const ORDERS_PER_PAGE = 6;
+const shiprocketBookingNote =
+  "Shiprocket shipment booked; awaiting parcel packing and courier pickup.";
+const orderProgressSteps = [
+  { status: "placed", label: "Order placed" },
+  { status: "processing", label: "Processing" },
+  { status: "ready_to_ship", label: "Ready to ship" },
+  { status: "pickup", label: "Pickup" },
+  { status: "in_transit", label: "In transit" },
+  { status: "delivered", label: "Delivered" },
+];
+
+function getShipmentProgressStatus(order) {
+  const savedStatus = order.shipping?.shipmentStatus;
+  if (order.status === "delivered") return "delivered";
+  if (order.status === "processing") return "processing";
+  if (order.status === "pending" || order.status === "paid") return "placed";
+  if (savedStatus === "rto") return "rto";
+  if (savedStatus) return savedStatus;
+  if (order.status === "shipped") return "in_transit";
+
+  const history = order.statusHistory || [];
+  for (const entry of [...history].reverse()) {
+    if (!entry.note?.startsWith("Shiprocket tracking update:")) continue;
+    const rawStatus = entry.note
+      .slice("Shiprocket tracking update:".length)
+      .toLowerCase();
+    if (/\brto\b|return to origin|returning to origin/.test(rawStatus))
+      return "rto";
+    if (/\bdelivered\b/.test(rawStatus)) return "delivered";
+    if (/in transit|out for delivery|shipped/.test(rawStatus))
+      return "in_transit";
+    if (/pick[\s-]?up|picked up|collected/.test(rawStatus)) return "pickup";
+    if (/ready to ship|label generated|manifest generated/.test(rawStatus))
+      return "ready_to_ship";
+  }
+  if (
+    order.shipping?.labelUrl ||
+    order.shipping?.shipmentId ||
+    order.shipping?.autoBookingStatus === "booked"
+  )
+    return "ready_to_ship";
+  return "placed";
+}
+
+function getShipmentProgressDate(order, status) {
+  if (status === "placed") return order.createdAt;
+  if (
+    status === order.shipping?.shipmentStatus &&
+    order.shipping?.shipmentStatusAt
+  )
+    return order.shipping.shipmentStatusAt;
+  const history = [...(order.statusHistory || [])].reverse();
+  const entry = history.find((item) => {
+    if (status === "processing") return item.status === "processing";
+    if (status === "ready_to_ship")
+      return item.note === shiprocketBookingNote;
+    if (!item.note?.startsWith("Shiprocket tracking update:")) return false;
+    const rawStatus = item.note
+      .slice("Shiprocket tracking update:".length)
+      .toLowerCase();
+    if (status === "rto")
+      return /\brto\b|return to origin|returning to origin/.test(rawStatus);
+    if (status === "ready_to_ship")
+      return (
+        item.note === shiprocketBookingNote ||
+        /ready to ship|label generated|manifest generated/.test(rawStatus)
+      );
+    if (status === "delivered") return /\bdelivered\b/.test(rawStatus);
+    if (status === "in_transit")
+      return /in transit|out for delivery|shipped/.test(rawStatus);
+    if (status === "pickup")
+      return /pick[\s-]?up|picked up|collected/.test(rawStatus);
+    return false;
+  });
+  if (entry?.at) return entry.at;
+  if (status === "delivered") return order.deliveredAt;
+  return null;
+}
+
+function OrderProgress({ order }) {
+  if (order.status === "cancelled")
+    return (
+      <p className="order-progress-cancelled" role="status">
+        This order was cancelled.
+      </p>
+    );
+
+  const shipmentStatus = getShipmentProgressStatus(order);
+  const activeStatus =
+    shipmentStatus === "rto" ? "delivered" : shipmentStatus;
+  const currentStep = Math.max(
+    0,
+    orderProgressSteps.findIndex((step) => step.status === activeStatus),
+  );
+  return (
+    <ol className="order-progress" aria-label="Order delivery progress">
+      {orderProgressSteps.map((step, index) => {
+        const complete = currentStep >= index;
+        const current = index === currentStep;
+        const status =
+          index === orderProgressSteps.length - 1 && shipmentStatus === "rto"
+            ? "rto"
+            : step.status;
+        const label =
+          status === "rto" ? "Returned to origin (RTO)" : step.label;
+        const stepDate = complete
+          ? getShipmentProgressDate(order, status)
+          : null;
+        return (
+          <li
+            className={`order-progress-step${complete ? " is-complete" : ""}${status === "rto" ? " is-returned" : ""}`}
+            key={step.status}
+            aria-current={current ? "step" : undefined}
+          >
+            <span className="order-progress-marker" aria-hidden="true">
+              {complete ? "✓" : index + 1}
+            </span>
+            <span className="order-progress-copy">
+              <b>{label}</b>
+              {stepDate && (
+                <small>{new Date(stepDate).toLocaleDateString()}</small>
+              )}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 function getOrderReturnWindowDays(order) {
   if (
     !order.items?.length ||
@@ -52,6 +183,7 @@ export default function Orders() {
   const verifiedPaymentReturn = useRef("");
   const [returnReason, setReturnReason] = useState("");
   const [returnOrderId, setReturnOrderId] = useState("");
+  const [pendingCancelOrder, setPendingCancelOrder] = useState(null);
   const ordersPageCount = Math.ceil(orders.length / ORDERS_PER_PAGE);
   const visibleOrders = orders.slice(
     (ordersPage - 1) * ORDERS_PER_PAGE,
@@ -161,21 +293,17 @@ export default function Orders() {
   if (!ready) return <div className="loading-state">Loading…</div>;
   if (user?.role === "admin") return <Navigate to="/admin/orders" replace />;
   if (!user) return <Navigate to="/login" replace />;
-  async function cancelOrder(order) {
+  function cancelOrder(order) {
+    setPendingCancelOrder(order);
+  }
+  async function confirmCancelOrder(order) {
     const paidOnline =
       order.paymentMethod === "cashfree" && order.paymentStatus === "paid";
-    if (
-      !window.confirm(
-        paidOnline
-          ? `Cancel paid order #${String(order._id).slice(-8).toUpperCase()}? The order will be cancelled and reserved stock restored, but the Cashfree refund will need to be handled manually.`
-          : `Cancel order #${String(order._id).slice(-8).toUpperCase()}? Reserved stock will be restored.`,
-      )
-    )
-      return;
     setBusy(order._id);
     setError("");
     try {
       await api.post(`/orders/${order._id}/cancel`);
+      setPendingCancelOrder(null);
       setNotice(
         paidOnline
           ? "Order cancelled and stock restored. Contact support to arrange the Cashfree refund."
@@ -218,6 +346,31 @@ export default function Orders() {
         robots="noindex, nofollow"
       />
       <ErrorToast error={error} onDismiss={() => setError("")} />
+      {pendingCancelOrder && (
+        <AdminConfirmDialog
+          title={`Cancel order #${String(pendingCancelOrder._id).slice(-8).toUpperCase()}?`}
+          description={
+            pendingCancelOrder.paymentMethod === "cashfree" &&
+            pendingCancelOrder.paymentStatus === "paid"
+              ? "The order will be cancelled and reserved stock restored. The Cashfree refund will need to be handled manually."
+              : "The order will be cancelled and reserved stock restored."
+          }
+          confirmLabel="Cancel order"
+          busyLabel="Cancelling…"
+          eyebrow="ORDER CANCELLATION"
+          icon={<Package size={23} />}
+          overlayClassName="class-exit-overlay confirm-overlay"
+          dialogClassName="class-exit-dialog confirm-dialog"
+          actionsClassName="class-exit-actions"
+          cancelLabel="Keep order"
+          cancelClassName="btn class-flow-button class-flow-button--green"
+          confirmClassName="btn class-flow-button class-flow-button--danger"
+          role="alertdialog"
+          busy={busy === pendingCancelOrder._id}
+          onCancel={() => setPendingCancelOrder(null)}
+          onConfirm={() => confirmCancelOrder(pendingCancelOrder)}
+        />
+      )}
       {paymentSuccess && (
         <PaymentSuccess
           title="Your order is confirmed"
@@ -367,6 +520,7 @@ export default function Orders() {
                 className="order-card-details"
                 id={`order-details-${o._id}`}
               >
+              <OrderProgress order={o} />
               <div className="order-products">
                 {o.items.map((i, n) => (
                   <div key={`${i.product}-${n}`}>
@@ -407,12 +561,7 @@ export default function Orders() {
                 {Number(o.shippingCost) > 0 && (
                   <div>
                     <small>Delivery</small>
-                    <b>
-                      ₹{Number(o.shippingCost).toFixed(2)}
-                      {o.shipping?.selectedCourierName
-                        ? ` · ${o.shipping.selectedCourierName}`
-                        : ""}
-                    </b>
+                    <b>₹{Number(o.shippingCost).toFixed(2)}</b>
                   </div>
                 )}
                 <div>
@@ -440,10 +589,7 @@ export default function Orders() {
               {o.tracking?.trackingNumber && (
                 <div className="tracking-info">
                   <b>Shipment tracking</b>
-                  <p>
-                    {o.tracking.courier || "Courier"} ·{" "}
-                    {o.tracking.trackingNumber}
-                  </p>
+                  <p>{o.tracking.trackingNumber}</p>
                   {o.tracking.trackingUrl && (
                     <a
                       className="text-link"
@@ -545,23 +691,6 @@ export default function Orders() {
                     )}
                 </div>
               )}
-              <div className="timeline">
-                {(o.statusHistory?.length
-                  ? o.statusHistory
-                  : [{ status: o.status, at: o.updatedAt }]
-                ).map((h, i) => (
-                  <div className="timeline-item" key={`${h.status}-${i}`}>
-                    <div>
-                      <div className="timeline-item-heading">
-                        <i />
-                        <b>{h.status}</b>
-                      </div>
-                      <p>{h.note || ""}</p>
-                      <small>{new Date(h.at).toLocaleString()}</small>
-                    </div>
-                  </div>
-                ))}
-              </div>
               {["pending", "paid", "processing"].includes(o.status) && (
                 <>
                   {(() => {
