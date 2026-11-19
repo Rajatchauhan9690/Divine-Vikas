@@ -9,7 +9,6 @@ import {
   verifyRefresh,
 } from "../utils/tokens.js";
 import { env } from "../config/env.js";
-import crypto from "node:crypto";
 export const cookieOptions = () => ({
   httpOnly: true,
   secure: env.nodeEnv === "production",

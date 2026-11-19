@@ -15,7 +15,7 @@ import { sendPasswordResetEmail } from "../services/emailService.js";
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
-const PASSWORD_RESET_TTL_MS = 5 * 60 * 1000;
+const PASSWORD_RESET_TTL_MS = 10 * 60 * 1000;
 const PASSWORD_RESET_RESEND_MS = 60 * 1000;
 const MAX_PASSWORD_RESET_ATTEMPTS = 5;
 const PASSWORD_RESET_RESPONSE = {
@@ -302,7 +302,7 @@ export const confirmPasswordReset = asyncHandler(async (req, res) => {
   account.password = password;
   account.failedLoginAttempts = 0;
   account.lockUntil = null;
-  await account.save();
+  await account.save({ validateModifiedOnly: true });
   await Session.updateMany(
     { user: account._id, revokedAt: null },
     { $set: { revokedAt: new Date() } },

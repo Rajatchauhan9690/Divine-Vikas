@@ -310,8 +310,8 @@ export const listOrderCouriers = asyncHandler(async (req, res) => {
   const packageData = packageDetails(req.query);
   const couriers = await getShiprocketCouriers({
     deliveryPostalCode: order.shippingAddress.postalCode,
-    weight: packageData.weight,
-    declaredValue: order.total,
+    ...packageData,
+    declaredValue: order.subtotal ?? order.total - (order.shippingCost || 0),
   });
   res.json({
     success: true,
@@ -361,21 +361,19 @@ export const createOrderShipment = asyncHandler(async (req, res) => {
     await order.save();
   }
   order.shipping.package = packageData;
+  order.shipping.shipmentStatus = "ready_to_ship";
+  order.shipping.shipmentStatusAt = new Date();
 
   if (!order.tracking?.trackingNumber) {
     const awb = await assignShiprocketCourier(
       order.shipping.shipmentId,
       courierId,
     );
-    const assigned = awb.response?.data || awb;
-    if (!assigned.awb_code)
-      throw new AppError(
-        assigned.message || "Shiprocket did not assign an AWB",
-        502,
-        "SHIPROCKET_AWB_FAILED",
-      );
+    const assigned = awb;
     order.tracking.courier =
       assigned.courier_name || assigned.courier_company_name || "Shiprocket";
+    order.shipping.selectedCourierId = courierId;
+    order.shipping.selectedCourierName = order.tracking.courier;
     order.tracking.trackingNumber = String(assigned.awb_code);
     await order.save();
   }
@@ -390,10 +388,10 @@ export const createOrderShipment = asyncHandler(async (req, res) => {
       );
     order.shipping.labelUrl = String(labelUrl);
   }
-  order.status = "shipped";
+  order.status = "processing";
   order.statusHistory.push({
-    status: "shipped",
-    note: "Shipment created and label generated through Shiprocket",
+    status: "processing",
+    note: "Shiprocket shipment booked; awaiting parcel packing and courier pickup.",
     by: req.user._id,
   });
 

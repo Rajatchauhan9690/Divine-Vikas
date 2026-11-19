@@ -49,7 +49,8 @@ The server loads settings from `server/.env`. Required values are `MONGODB_URI`,
 | Setting | Purpose |
 | --- | --- |
 | `PORT` | API port; defaults to `5000`. |
-| `CLIENT_ORIGIN` | Primary browser origin used for redirects; defaults to `http://localhost:5173`. The primary origin and the Divine Vikas Vercel deployments are allowed for browser requests. |
+| `CLIENT_ORIGIN` | Primary browser origin used for redirects; defaults to `http://localhost:5173`. |
+| `CLIENT_ORIGINS` | Optional comma-separated additional browser origins allowed for CORS and CSRF (for example, `https://app.example.com`). |
 | `COOKIE_SAME_SITE` | Development cookie policy; defaults to `lax`. Production always uses `none` so the separately hosted Vercel client can send session and CSRF cookies, and marks cookies `Secure`. |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Optional credentials for product image uploads. Keep these server-side. Existing files in `server/uploads/` are also served by the API. |
 | `IMAGE_ORIGINS` | Optional comma-separated image origins allowed by the server's content security policy. |
@@ -150,6 +151,8 @@ Set the three `CLOUDINARY_*` server variables to enable Cloudinary product image
 ### Shiprocket
 
 Set the `SHIPROCKET_*` credentials and pickup settings to use courier discovery and shipment creation from Admin Orders. Configure the provider's tracking webhook to call `/api/courier-updates` and use the same secret for `SHIPROCKET_WEBHOOK_TOKEN`. Shipment creation is restricted to paid orders.
+
+Enter each product's packed weight and (for automatic booking) packed length, breadth, and height in Admin → Products. Checkout quotes sum packed unit weights; automatic booking stacks the products vertically, using the largest length and breadth and the sum of item heights. This simple packing rule assumes the packed items can safely be stacked. Products without dimensions and orders above 5 total units are flagged for manual shipping in Admin Orders. Change the limit with `SHIPROCKET_AUTO_BOOK_MAX_ITEMS`. Package dimensions and weight are no longer configured in environment variables.
 
 ## Security
 

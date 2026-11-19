@@ -16,6 +16,7 @@ import { useAuth } from "../features/auth/AuthContext";
 import AdminToast from "../components/AdminToast";
 import CashfreeCustomCheckout from "../components/CashfreeCustomCheckout";
 import PaymentSuccess from "../components/PaymentSuccess";
+import Seo from "../components/Seo";
 
 function formatRetryCountdown(seconds) {
   const minutes = Math.floor(seconds / 60);
@@ -814,6 +815,11 @@ export default function ClassBookings() {
   );
   return (
     <section className="section class-booking-page">
+      <Seo
+        title="Book Classes and Sessions"
+        description="Explore upcoming Divine Vikas classes and sessions, check available seats, and reserve your place online."
+        robots="noindex, follow"
+      />
       <AdminToast toast={toast} onDismiss={() => setToast(null)} />
       {paymentSuccess && (
         <PaymentSuccess

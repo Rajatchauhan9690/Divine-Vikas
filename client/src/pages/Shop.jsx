@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { api } from "../services/api";
 import ProductCard from "../components/ProductCard";
+import ErrorToast from "../components/ErrorToast";
+import Seo from "../components/Seo";
 export default function Shop() {
   const [products, setProducts] = useState([]),
     [search, setSearch] = useState(""),
@@ -38,6 +40,11 @@ export default function Shop() {
   }, [search, category]);
   return (
     <section className="section shop-page">
+      <Seo
+        title="Shop Fragrances"
+        description="Explore Divine Vikas fragrances and find an everyday favourite or a thoughtful gift. Discover quality-first scents inspired by bhav and bhakti."
+      />
+      <ErrorToast error={error} onDismiss={() => setError("")} />
       <div className="shop-intro">
         <span className="eyebrow">SOMETHING FOR EVERY MOOD</span>
         <h1>
@@ -71,7 +78,21 @@ export default function Shop() {
       </div>
       {error && <p className="notice error">{error}</p>}
       {loading ? (
-        <div className="loading-state">Preparing your collection…</div>
+        <div className="product-grid shop-skeleton-grid" role="status" aria-label="Loading fragrances">
+          {Array.from({ length: 8 }, (_, index) => (
+            <article className="product-card shop-skeleton-card" key={index}>
+              <div className="shop-skeleton shop-skeleton-image" />
+              <div className="product-info">
+                <div className="shop-skeleton shop-skeleton-title" />
+                <div className="shop-skeleton shop-skeleton-description" />
+                <div className="product-bottom">
+                  <div className="shop-skeleton shop-skeleton-price" />
+                  <div className="shop-skeleton shop-skeleton-rating" />
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
       ) : products.length ? (
         <div className="product-grid">
           {products.map((p) => (

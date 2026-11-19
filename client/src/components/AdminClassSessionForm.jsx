@@ -11,6 +11,7 @@ import {
 import { api } from "../services/api";
 import AdminToast from "./AdminToast";
 import AdminConfirmDialog from "./AdminConfirmDialog";
+import AdminCardSkeleton from "./AdminCardSkeleton";
 
 function localDateValue(date) {
   const year = date.getFullYear();
@@ -43,6 +44,7 @@ export default function AdminClassSessionForm() {
   const [toast, setToast] = useState(null);
   const [seatCountError, setSeatCountError] = useState("");
   const [sessions, setSessions] = useState([]);
+  const [loadingSessions, setLoadingSessions] = useState(true);
   const [sessionSearch, setSessionSearch] = useState("");
   const [sessionView, setSessionView] = useState("upcoming");
   const [sessionPrices, setSessionPrices] = useState({});
@@ -74,6 +76,7 @@ export default function AdminClassSessionForm() {
     sessionsRequest.current?.abort();
     const controller = new AbortController();
     sessionsRequest.current = controller;
+    setLoadingSessions(true);
     try {
       const { data } = await api.get("/admin/classes", {
         params: { search, view },
@@ -106,7 +109,10 @@ export default function AdminClassSessionForm() {
       });
       return false;
     } finally {
-      if (sessionsRequest.current === controller) sessionsRequest.current = null;
+      if (sessionsRequest.current === controller) {
+        sessionsRequest.current = null;
+        setLoadingSessions(false);
+      }
     }
   }
   useEffect(() => {
@@ -477,7 +483,9 @@ export default function AdminClassSessionForm() {
             className="admin-class-session-list"
             key={sessionView}
           >
-          {visibleSessions.map((session) => (
+          {loadingSessions ? (
+            <AdminCardSkeleton count={4} layout="list" />
+          ) : visibleSessions.map((session) => (
             <div className="admin-class-session-card" key={session._id}>
               <div className="admin-class-session-card-header">
                 <details className="admin-class-session-details">
@@ -581,14 +589,14 @@ export default function AdminClassSessionForm() {
               </div>
             </div>
           ))}
-          {!sessions.length && (
+          {!loadingSessions && !sessions.length && (
             <p className="table-empty">
               {sessionSearch.trim()
                 ? "No class sessions match your search."
                 : `No ${sessionView} class sessions.`}
             </p>
           )}
-          {sessions.length > 0 && (
+          {!loadingSessions && sessions.length > 0 && (
             <div className="admin-pagination">
               <button
                 className="btn btn-outline"

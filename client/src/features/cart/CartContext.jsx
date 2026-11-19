@@ -37,9 +37,14 @@ export function CartProvider({ children }) {
   const remove = (id) => setItems((old) => old.filter((i) => i._id !== id));
   const clear = () => setItems([]);
   const change = (id, qty) =>
-    setItems((old) =>
-      old.map((i) => (i._id === id ? { ...i, qty: Math.max(1, qty) } : i)),
-    );
+    setItems((old) => {
+      const target = old.find((item) => item._id === id);
+      if (!target) return old;
+      const nextQuantity = Math.max(1, qty);
+      return old.map((item) =>
+        item._id === id ? { ...item, qty: nextQuantity } : item,
+      );
+    });
   const total = useMemo(
     () => items.reduce((s, i) => s + i.price * i.qty, 0),
     [items],

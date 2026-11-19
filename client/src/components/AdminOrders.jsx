@@ -2,12 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  Package,
   Search,
   XCircle,
 } from "lucide-react";
 import { api } from "../services/api";
 import AdminToast from "./AdminToast";
+import AdminCardSkeleton from "./AdminCardSkeleton";
+import AdminConfirmDialog from "./AdminConfirmDialog";
 const statuses = ["pending", "paid", "processing", "shipped", "delivered"];
+const statusOrder = ["pending", "paid", "processing", "shipped", "delivered"];
 const orderFilters = [
   { label: "All", value: "" },
   { label: "Pending", value: "pending" },
@@ -21,6 +25,7 @@ export default function AdminOrders() {
   const [orders, setOrders] = useState([]),
     [toast, setToast] = useState(null),
     [busy, setBusy] = useState(""),
+    [loading, setLoading] = useState(true),
     [selectedOrderId, setSelectedOrderId] = useState(""),
     [page, setPage] = useState(1),
     [search, setSearch] = useState(""),
@@ -43,6 +48,7 @@ export default function AdminOrders() {
     ordersRequest.current?.abort();
     const controller = new AbortController();
     ordersRequest.current = controller;
+    setLoading(true);
     try {
       const { data } = await api.get("/admin/orders", {
         params: { page: nextPage, limit: 10, search: query, status },
@@ -61,7 +67,10 @@ export default function AdminOrders() {
       });
       return false;
     } finally {
-      if (ordersRequest.current === controller) ordersRequest.current = null;
+      if (ordersRequest.current === controller) {
+        ordersRequest.current = null;
+        setLoading(false);
+      }
     }
   }, []);
   useEffect(() => {
@@ -231,7 +240,7 @@ export default function AdminOrders() {
         </div>
       </div>
       <AdminToast toast={toast} onDismiss={dismissToast} />
-      {orders.length === 0 && (
+      {!loading && orders.length === 0 && (
         <p className="notice">
           {search.trim() ? "No orders match your search." : "No orders found."}
         </p>
@@ -262,7 +271,9 @@ export default function AdminOrders() {
         </div>
       ) : (
         <div className="admin-order-card-grid">
-          {orders.map((order) => (
+          {loading ? (
+            <AdminCardSkeleton count={6} layout="grid" />
+          ) : orders.map((order) => (
             <button
               type="button"
               className="admin-order-card"
@@ -294,7 +305,7 @@ export default function AdminOrders() {
           ))}
         </div>
       )}
-      {!selectedOrderId && pagination.total > 0 && (
+      {!loading && !selectedOrderId && pagination.total > 0 && (
         <div className="admin-pagination">
           <button
             className="btn btn-outline"
@@ -343,16 +354,48 @@ function OrderRow({
     .find((history) => history.status === "cancelled")?.by;
   const returnStatus = order.returnRequest?.status || "none";
   const deliveredAt = order.deliveredAt ? new Date(order.deliveredAt) : null;
+  const currentStatusRank = statusOrder.indexOf(order.status);
   useEffect(() => {
     setStatus(order.status);
   }, [order.status]);
   async function searchCouriers() {
     const choices = await findCouriers(order, packageData);
     setCouriers(choices);
-    setCourierId(choices[0] ? String(choices[0].id) : "");
+    const savedCourier = choices.find(
+      (courier) => courier.id === order.shipping?.selectedCourierId,
+    );
+    setCourierId(
+      savedCourier
+        ? String(savedCourier.id)
+        : choices[0]
+          ? String(choices[0].id)
+          : "",
+    );
   }
   return (
     <article className="admin-order-row">
+      {confirmCancel && (
+        <AdminConfirmDialog
+          title={`Cancel order #${String(order._id).slice(-8).toUpperCase()}?`}
+          description={`Cancel this order? Reserved stock will be restored.${order.paymentMethod === "cashfree" && order.paymentStatus === "paid" ? " An automatic Cashfree refund must be accepted before cancellation can complete." : ""}`}
+          confirmLabel="Confirm cancellation"
+          busyLabel="Cancelling…"
+          eyebrow="ORDER CANCELLATION"
+          icon={<Package size={23} />}
+          overlayClassName="class-exit-overlay confirm-overlay"
+          dialogClassName="class-exit-dialog confirm-dialog"
+          actionsClassName="class-exit-actions"
+          cancelLabel="Keep order"
+          cancelClassName="btn class-flow-button class-flow-button--green"
+          confirmClassName="btn class-flow-button class-flow-button--danger"
+          role="alertdialog"
+          busy={busy}
+          onCancel={() => setConfirmCancel(false)}
+          onConfirm={async () => {
+            if (await cancel(order)) setConfirmCancel(false);
+          }}
+        />
+      )}
       <header className="admin-order-detail-heading">
         <div>
           <span className="admin-order-card-id">
@@ -364,6 +407,18 @@ function OrderRow({
             {order.shippingAddress?.city}, {order.shippingAddress?.state} ·{" "}
             {new Date(order.createdAt).toLocaleDateString()}
           </p>
+          {Number(order.shippingCost) > 0 && (
+            <small>
+              Items ₹{Number(order.subtotal).toFixed(2)}
+              {Number(order.discountAmount) > 0 &&
+                ` − coupon ${order.coupon?.code || ""} ₹${Number(order.discountAmount).toFixed(2)}`}
+              {" + delivery ₹"}
+              {Number(order.shippingCost).toFixed(2)}
+              {order.shipping?.selectedCourierName
+                ? ` (${order.shipping.selectedCourierName})`
+                : ""}
+            </small>
+          )}
         </div>
         <span className={`admin-order-card-status status-${order.status}`}>
           {order.status}
@@ -430,59 +485,39 @@ function OrderRow({
                   cancelled
                 </option>
               )}
-              {statuses.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
+              {statuses
+                .map((s) => (
+                  <option
+                    key={s}
+                    disabled={
+                      currentStatusRank < 0 ||
+                      statusOrder.indexOf(s) < currentStatusRank
+                    }
+                  >
+                    {s}
+                  </option>
+                ))}
             </select>
           </label>
           <div className="admin-order-actions">
             <button
               className="btn btn-dark"
-              disabled={busy || order.status === "cancelled"}
+              disabled={
+                busy || order.status === "cancelled" || status === order.status
+              }
             >
               {busy ? "Saving…" : "Save order"}
             </button>
             {["pending", "paid", "processing"].includes(order.status) && (
-              <>
-                {!confirmCancel ? (
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    disabled={busy}
-                    onClick={() => setConfirmCancel(true)}
-                  >
-                    <XCircle size={16} />
-                    Cancel order
-                  </button>
-                ) : (
-                  <div className="admin-cancel-confirm">
-                    <p>
-                      Cancel this order? Reserved stock will be restored.
-                      {order.paymentMethod === "cashfree" &&
-                        order.paymentStatus === "paid" &&
-                        " An automatic Cashfree refund must be accepted before cancellation can complete."}
-                    </p>
-                    <button
-                      type="button"
-                      className="btn btn-danger"
-                      disabled={busy}
-                      onClick={async () => {
-                        if (await cancel(order)) setConfirmCancel(false);
-                      }}
-                    >
-                      {busy ? "Cancelling…" : "Confirm cancellation"}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-outline"
-                      disabled={busy}
-                      onClick={() => setConfirmCancel(false)}
-                    >
-                      Keep order
-                    </button>
-                  </div>
-                )}
-              </>
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={busy}
+                onClick={() => setConfirmCancel(true)}
+              >
+                <XCircle size={16} />
+                Cancel order
+              </button>
             )}
           </div>
           {returnStatus !== "none" && (
@@ -532,9 +567,32 @@ function OrderRow({
             ["paid", "processing"].includes(order.status) && (
               <div className="admin-shiprocket">
                 <b>Ship with Shiprocket</b>
+                {order.shipping?.autoBookingStatus === "processing" && (
+                  <small>Automatic Shiprocket booking is in progress.</small>
+                )}
+                {order.shipping?.autoBookingStatus === "manual_required" &&
+                  !order.shipping?.labelUrl && (
+                  <p className="notice" role="status">
+                    Automatic booking was skipped:{" "}
+                    {order.shipping.autoBookingError} Enter the actual parcel
+                    details below to ship manually.
+                  </p>
+                )}
+                {order.shipping?.autoBookingStatus === "failed" && (
+                  <p className="notice error" role="alert">
+                    Automatic booking failed: {order.shipping.autoBookingError}
+                    {" "}You can complete shipping manually below.
+                  </p>
+                )}
+                {order.shipping?.autoBookingStatus === "booked" && (
+                  <small>
+                    Shipment booked automatically. Pack the parcel and hand it
+                    to the courier for pickup.
+                  </small>
+                )}
                 {order.shipping?.labelUrl ? (
                   <a
-                    className="text-link"
+                    className="text-link admin-shipping-label"
                     href={order.shipping.labelUrl}
                     target="_blank"
                     rel="noreferrer"

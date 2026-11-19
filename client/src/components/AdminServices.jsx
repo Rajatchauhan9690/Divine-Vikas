@@ -12,6 +12,7 @@ import {
 import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
 import AdminToast from "./AdminToast";
+import AdminCardSkeleton from "./AdminCardSkeleton";
 import AdminConfirmDialog from "./AdminConfirmDialog";
 
 function localDateTimeValue(value) {
@@ -425,7 +426,11 @@ export default function AdminServices() {
 
       <div className="admin-service-list admin-class-session-list">
         {loading ? (
-          <p className="loading-state">Loading services…</p>
+          <AdminCardSkeleton
+            count={4}
+            layout="list"
+            className="admin-class-session-list"
+          />
         ) : filteredServices.length ? (
           pagedServices.map((service) => {
             const slots = service.seats || [];

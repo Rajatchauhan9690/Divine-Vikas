@@ -2,8 +2,10 @@ import crypto from "node:crypto";
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import ProductPaymentAttempt from "../models/ProductPaymentAttempt.js";
+import Coupon from "../models/Coupon.js";
 import User from "../models/User.js";
 import AppError from "../utils/AppError.js";
+import { calculateShippingPackage } from "../utils/shippingPackage.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { cashfreeRequest } from "../services/cashfreeService.js";
 import {
@@ -12,8 +14,14 @@ import {
   releaseExpiredProductPaymentAttempts,
   releaseProductPaymentAttempt,
 } from "../services/productPaymentService.js";
+import { getShiprocketCouriers } from "../services/shiprocketService.js";
 import { processClassPaymentWebhook } from "./classSessionController.js";
 import { processManualSubscriptionWebhook } from "../services/subAdminSubscriptionService.js";
+import {
+  findEligibleCoupon,
+  reserveCoupon,
+  releaseCouponReservation,
+} from "../services/couponService.js";
 function validAddress(a) {
   return (
     a &&
@@ -23,6 +31,125 @@ function validAddress(a) {
     /^\+?[0-9 ()-]{8,20}$/.test(a.phone)
   );
 }
+
+async function buildOrderItems(raw) {
+  if (!Array.isArray(raw) || !raw.length || raw.length > 30)
+    throw new AppError(
+      "Add at least one item to your order",
+      400,
+      "INVALID_ORDER",
+    );
+  const ids = [...new Set(raw.map((item) => item.product))];
+  const products = await Product.find({ _id: { $in: ids }, active: true });
+  const byId = new Map(products.map((product) => [product._id.toString(), product]));
+  const items = [];
+  let subtotal = 0;
+  for (const item of raw) {
+    const product = byId.get(String(item.product));
+    const quantity = Number(item.quantity);
+    if (!product || !Number.isInteger(quantity) || quantity < 1)
+      throw new AppError("An order item is invalid", 400, "INVALID_ORDER_ITEM");
+    if (product.stock < quantity)
+      throw new AppError(
+        `Not enough stock for ${product.name}`,
+        409,
+        "INSUFFICIENT_STOCK",
+      );
+    const returnable =
+      product.returnable !== false &&
+      Number.isInteger(product.returnWindowDays) &&
+      product.returnWindowDays >= 1 &&
+      product.returnWindowDays <= 90;
+    items.push({
+      product: product._id,
+      name: product.name,
+      price: product.price,
+      quantity,
+      shippingWeightKg: product.shippingWeightKg ?? null,
+      shippingLengthCm: product.shippingLengthCm ?? null,
+      shippingBreadthCm: product.shippingBreadthCm ?? null,
+      shippingHeightCm: product.shippingHeightCm ?? null,
+      returnable,
+      returnWindowDays: returnable ? product.returnWindowDays : null,
+    });
+    subtotal += product.price * quantity;
+  }
+  if (!Number.isFinite(subtotal) || subtotal <= 0)
+    throw new AppError("Invalid order total", 400, "INVALID_ORDER");
+  return { items, subtotal };
+}
+
+async function getDeliveryOptions(items, address, subtotal) {
+  const missingWeights = items.filter(
+    (item) =>
+      !Number.isFinite(item.shippingWeightKg) || item.shippingWeightKg <= 0,
+  );
+  if (missingWeights.length)
+    throw new AppError(
+      `Delivery can't be calculated yet. Shipping weight is missing for ${missingWeights.map((item) => item.name).join(", ")}. Ask the store admin to add it in Admin → Products.`,
+      400,
+      "SHIPPING_WEIGHT_REQUIRED",
+    );
+  const packageData = calculateShippingPackage(items);
+  const available = await getShiprocketCouriers({
+    deliveryPostalCode: address.postalCode,
+    ...packageData,
+    declaredValue: subtotal,
+  });
+  const couriers = available
+    .map((courier) => ({
+      id: Number(courier.courier_company_id),
+      name: String(courier.courier_name || "Shiprocket courier"),
+      rate: Number(courier.rate),
+      estimatedDate: courier.etd ? String(courier.etd) : "",
+      estimatedDays: courier.estimated_delivery_days
+        ? String(courier.estimated_delivery_days)
+        : "",
+    }))
+    .filter(
+      (courier) =>
+        Number.isInteger(courier.id) &&
+        courier.id > 0 &&
+        Number.isFinite(courier.rate) &&
+        courier.rate >= 0,
+    );
+  const distinctCouriers = [...new Map(
+    couriers.map((courier) => [courier.id, courier]),
+  ).values()];
+  const couriersWithEstimates = distinctCouriers
+    .map((courier) => ({
+      courier,
+      days: Number.parseFloat(courier.estimatedDays),
+    }))
+    .filter(({ days }) => Number.isFinite(days) && days > 0);
+  const fastest = [...couriersWithEstimates].sort(
+    (a, b) => a.days - b.days || a.courier.rate - b.courier.rate,
+  )[0]?.courier;
+  return fastest ? [{ ...fastest, badges: ["Fastest"] }] : [];
+}
+
+export const quoteOrderShipping = asyncHandler(async (req, res) => {
+  if (!validAddress(req.body.shippingAddress))
+    throw new AppError(
+      "A valid shipping address is required",
+      400,
+      "INVALID_ADDRESS",
+    );
+  const { items, subtotal } = await buildOrderItems(req.body.items);
+  const couriers = await getDeliveryOptions(
+    items,
+    req.body.shippingAddress,
+    subtotal,
+  );
+  const packing = calculateShippingPackage(items);
+  res.json({
+    success: true,
+    subtotal,
+    couriers,
+    packing: packing.packages,
+  });
+});
+
 export const createOrder = asyncHandler(async (req, res) => {
   await releaseExpiredProductPaymentAttempts();
   const raw = req.body.items;
@@ -39,45 +166,40 @@ export const createOrder = asyncHandler(async (req, res) => {
       400,
       "INVALID_ADDRESS",
     );
-  if (!Array.isArray(raw) || !raw.length || raw.length > 30)
+  const { items, subtotal } = await buildOrderItems(raw);
+  const selectedCourierId = Number(req.body.shippingCourierId);
+  const quotedShippingRate = Number(req.body.shippingRate);
+  if (!Number.isInteger(selectedCourierId) || selectedCourierId < 1 ||
+      !Number.isFinite(quotedShippingRate) || quotedShippingRate < 0)
     throw new AppError(
-      "Add at least one item to your order",
+      "Choose a delivery option before continuing to payment",
       400,
-      "INVALID_ORDER",
+      "SHIPPING_OPTION_REQUIRED",
     );
-  const ids = [...new Set(raw.map((i) => i.product))];
-  const products = await Product.find({ _id: { $in: ids }, active: true });
-  const byId = new Map(products.map((p) => [p._id.toString(), p]));
-  const items = [];
-  let total = 0;
-  for (const item of raw) {
-    const p = byId.get(String(item.product)),
-      quantity = Number(item.quantity);
-    if (!p || !Number.isInteger(quantity) || quantity < 1 || quantity > 20)
-      throw new AppError("An order item is invalid", 400, "INVALID_ORDER_ITEM");
-    if (p.stock < quantity)
-      throw new AppError(
-        `Not enough stock for ${p.name}`,
-        409,
-        "INSUFFICIENT_STOCK",
-      );
-    const returnable =
-      p.returnable !== false &&
-      Number.isInteger(p.returnWindowDays) &&
-      p.returnWindowDays >= 1 &&
-      p.returnWindowDays <= 90;
-    items.push({
-      product: p._id,
-      name: p.name,
-      price: p.price,
-      quantity,
-      returnable,
-      returnWindowDays: returnable ? p.returnWindowDays : null,
-    });
-    total += p.price * quantity;
-  }
-  if (!Number.isFinite(total) || total <= 0)
-    throw new AppError("Invalid order total", 400, "INVALID_ORDER");
+  const deliveryOptions = await getDeliveryOptions(items, address, subtotal);
+  const selectedCourier = deliveryOptions.find(
+    (courier) => courier.id === selectedCourierId,
+  );
+  if (!selectedCourier)
+    throw new AppError(
+      "The selected courier is no longer available. Refresh delivery options and choose again.",
+      409,
+      "SHIPPING_OPTION_UNAVAILABLE",
+    );
+  if (Math.abs(selectedCourier.rate - quotedShippingRate) > 0.01)
+    throw new AppError(
+      `The delivery price changed from ₹${quotedShippingRate.toFixed(2)} to ₹${selectedCourier.rate.toFixed(2)}. Refresh delivery options and confirm the new price.`,
+      409,
+      "SHIPPING_QUOTE_CHANGED",
+    );
+  const shippingCost = selectedCourier.rate;
+  const couponCode = typeof req.body.couponCode === "string"
+    ? req.body.couponCode.trim()
+    : "";
+  if (couponCode) await findEligibleCoupon(couponCode, subtotal);
+  let couponReservation = null;
+  let discountAmount = 0;
+  let total = Number((subtotal + shippingCost).toFixed(2));
   const reserved = [];
   for (const item of items) {
     const result = await Product.updateOne(
@@ -101,10 +223,38 @@ export const createOrder = asyncHandler(async (req, res) => {
   const expiresAt = new Date(Date.now() + 20 * 60 * 1000);
   let attempt;
   try {
+    if (couponCode) {
+      couponReservation = await reserveCoupon(couponCode, subtotal);
+      discountAmount = couponReservation.details.discountAmount;
+      total = Number((subtotal - discountAmount + shippingCost).toFixed(2));
+    }
+    if (total <= 0)
+      throw new AppError(
+        "The coupon discount cannot make the payment total zero.",
+        400,
+        "INVALID_COUPON_TOTAL",
+      );
     const user = await User.findById(req.user._id);
     attempt = await ProductPaymentAttempt.create({
       user: req.user._id,
       items,
+      subtotal,
+      discountAmount,
+      coupon: couponReservation
+        ? {
+            couponId: couponReservation.coupon._id,
+            code: couponReservation.coupon.code,
+            discountType: couponReservation.coupon.discountType,
+            value: couponReservation.coupon.value,
+            reservationStatus: "reserved",
+          }
+        : undefined,
+      shippingCost,
+      shippingCourier: {
+        id: selectedCourier.id,
+        name: selectedCourier.name,
+        estimatedDays: selectedCourier.estimatedDays,
+      },
       total,
       shippingAddress: address,
       providerOrderId: `DV${crypto.randomBytes(16).toString("hex")}`,
@@ -114,7 +264,7 @@ export const createOrder = asyncHandler(async (req, res) => {
     const cf = await cashfreeRequest("/orders", {
       body: {
         order_id: attempt.providerOrderId,
-        order_amount: Number(total.toFixed(2)),
+        order_amount: total,
         order_currency: "INR",
         order_expiry_time: expiresAt.toISOString(),
         customer_details: {
@@ -142,11 +292,25 @@ export const createOrder = asyncHandler(async (req, res) => {
             ? "production"
             : "sandbox",
         expiresAt,
+        subtotal,
+        shippingCost,
+        discountAmount,
+        coupon: couponReservation?.details || null,
+        total,
+        shippingCourier: selectedCourier,
         returnUrl,
       },
     });
   } catch (error) {
-    if (attempt) await ProductPaymentAttempt.deleteOne({ _id: attempt._id });
+    if (attempt) {
+      await releaseCouponReservation(attempt);
+      await ProductPaymentAttempt.deleteOne({ _id: attempt._id });
+    } else if (couponReservation) {
+      await Coupon.updateOne(
+        { _id: couponReservation.coupon._id, reservedCount: { $gt: 0 } },
+        { $inc: { reservedCount: -1 } },
+      );
+    }
     for (const item of reserved)
       await Product.updateOne(
         { _id: item.product },
@@ -628,7 +792,17 @@ export const adminUpdateOrder = asyncHandler(async (req, res) => {
   ];
   if (req.body.status && !allowed.includes(req.body.status))
     throw new AppError("Invalid order status", 400, "INVALID_ORDER_STATUS");
-  if (req.body.status) {
+  const statusOrder = ["pending", "paid", "processing", "shipped", "delivered"];
+  if (
+    req.body.status &&
+    statusOrder.indexOf(req.body.status) < statusOrder.indexOf(order.status)
+  )
+    throw new AppError(
+      "Order status cannot move backwards",
+      409,
+      "ORDER_STATUS_CANNOT_REGRESS",
+    );
+  if (req.body.status && req.body.status !== order.status) {
     if (
       order.paymentMethod === "cashfree" &&
       req.body.status === "paid" &&
@@ -640,8 +814,18 @@ export const adminUpdateOrder = asyncHandler(async (req, res) => {
         "PAYMENT_NOT_VERIFIED",
       );
     order.status = req.body.status;
+    if (req.body.status === "shipped" && !order.shipping?.shipmentStatus) {
+      order.shipping ||= {};
+      order.shipping.shipmentStatus = "in_transit";
+      order.shipping.shipmentStatusAt = new Date();
+    }
     if (req.body.status === "delivered" && !order.deliveredAt)
       order.deliveredAt = new Date();
+    if (req.body.status === "delivered") {
+      order.shipping ||= {};
+      order.shipping.shipmentStatus = "delivered";
+      order.shipping.shipmentStatusAt ||= order.deliveredAt;
+    }
     order.statusHistory.push({
       status: order.status,
       note: String(req.body.note || `Status updated to ${order.status}`).slice(
@@ -688,17 +872,44 @@ export const shiprocketWebhook = asyncHandler(async (req, res) => {
   const order = await Order.findOne({ "tracking.trackingNumber": awb });
   if (!order) return res.json({ success: true, ignored: true });
   const normalized = rawStatus.toLowerCase();
-  const nextStatus =
-    /out for delivery/.test(normalized)
-      ? "shipped"
+  const shipmentStatus =
+    /\brto\b|return to origin|returning to origin/.test(normalized)
+      ? "rto"
       : /\bdelivered\b/.test(normalized)
         ? "delivered"
-        : /cancel|rto|return to origin/.test(normalized)
-          ? ""
-          : /transit|pickup|manifest|shipped/.test(normalized)
-            ? "shipped"
-            : "";
+        : /in transit|out for delivery|shipped/.test(normalized)
+          ? "in_transit"
+          : /pick[\s-]?up|picked up|collected/.test(normalized)
+            ? "pickup"
+            : /ready to ship|label generated|manifest generated/.test(normalized)
+              ? "ready_to_ship"
+              : "";
+  const nextStatus =
+    shipmentStatus === "delivered"
+      ? "delivered"
+      : ["pickup", "in_transit"].includes(shipmentStatus)
+        ? "shipped"
+        : "";
   const note = `Shiprocket tracking update: ${rawStatus}`.slice(0, 300);
+  if (shipmentStatus) {
+    const stageRank = {
+      ready_to_ship: 1,
+      pickup: 2,
+      in_transit: 3,
+      delivered: 4,
+    };
+    const currentRank = stageRank[order.shipping?.shipmentStatus] || 0;
+    const nextRank = stageRank[shipmentStatus] || 0;
+    if (
+      shipmentStatus === "rto" ||
+      (order.shipping?.shipmentStatus !== "rto" &&
+        (shipmentStatus === "delivered" || nextRank >= currentRank))
+    ) {
+      order.shipping ||= {};
+      order.shipping.shipmentStatus = shipmentStatus;
+      order.shipping.shipmentStatusAt = new Date();
+    }
+  }
   if (
     nextStatus &&
     order.status !== "cancelled" &&

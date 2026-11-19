@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 
 const authImage =
@@ -27,11 +26,9 @@ export default function AuthLayout() {
         </div>
       </div>
       <div className="auth-panel">
-        <Suspense fallback={<div className="auth-route-loading" />}>
-          <div key={pathname} className="auth-route-transition">
-            <Outlet />
-          </div>
-        </Suspense>
+        <div key={pathname} className="auth-route-transition">
+          <Outlet />
+        </div>
       </div>
     </section>
   );

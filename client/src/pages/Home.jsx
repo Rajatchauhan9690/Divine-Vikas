@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
 import ProductCard from "../components/ProductCard";
+import Seo from "../components/Seo";
 export default function Home() {
   const { user } = useAuth();
   const [products, setProducts] = useState([]);
@@ -25,6 +26,18 @@ export default function Home() {
   }, []);
   return (
     <>
+      <Seo
+        title="Luxury Fragrances Inspired by Devotion"
+        description="Discover Divine Vikas fragrances: thoughtful, quality-first scents for everyday luxury, inspired by bhav and bhakti."
+        structuredData={{
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          name: "Divine Vikas",
+          description:
+            "Thoughtful, quality-first fragrances inspired by bhav and bhakti.",
+          url: window.location.origin,
+        }}
+      />
       <section className="hero">
         <div className="hero-copy">
           <span className="eyebrow">

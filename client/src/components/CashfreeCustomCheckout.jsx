@@ -6,6 +6,7 @@ import {
   ShieldCheck,
   Smartphone,
 } from "lucide-react";
+import ErrorToast from "./ErrorToast";
 
 let cashfreeScriptPromise;
 
@@ -320,6 +321,10 @@ export default function CashfreeCustomCheckout({
 
   return (
     <div className="class-custom-checkout-overlay">
+      <ErrorToast
+        error={paymentMessage}
+        onDismiss={() => setPaymentMessage("")}
+      />
       <section
         className="class-custom-checkout"
         role="dialog"

@@ -5,7 +5,17 @@ export default function AdminConfirmDialog({
   title,
   description,
   confirmLabel = "Delete",
+  busyLabel = "Deleting…",
   busy = false,
+  eyebrow,
+  icon,
+  overlayClassName = "confirm-overlay",
+  dialogClassName = "confirm-dialog admin-confirm-dialog",
+  actionsClassName = "inline-actions admin-confirm-actions",
+  cancelLabel = "Cancel",
+  cancelClassName = "btn btn-outline",
+  confirmClassName = "btn btn-danger",
+  role = "dialog",
   onCancel,
   onConfirm,
 }) {
@@ -19,37 +29,39 @@ export default function AdminConfirmDialog({
 
   return createPortal(
     <div
-      className="confirm-overlay"
+      className={overlayClassName}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !busy) onCancel();
       }}
     >
       <section
-        className="confirm-dialog admin-confirm-dialog"
-        role="dialog"
+        className={dialogClassName}
+        role={role}
         aria-modal="true"
         aria-labelledby="admin-confirm-title"
         aria-describedby="admin-confirm-description"
       >
+        {icon && <div className="class-exit-icon" aria-hidden="true">{icon}</div>}
+        {eyebrow && <span className="eyebrow">{eyebrow}</span>}
         <h2 id="admin-confirm-title">{title}</h2>
         <p id="admin-confirm-description">{description}</p>
-        <div className="inline-actions admin-confirm-actions">
+        <div className={actionsClassName}>
           <button
             type="button"
-            className="btn btn-outline"
+            className={cancelClassName}
             disabled={busy}
             autoFocus
             onClick={onCancel}
           >
-            Cancel
+            {cancelLabel}
           </button>
           <button
             type="button"
-            className="btn btn-danger"
+            className={confirmClassName}
             disabled={busy}
             onClick={onConfirm}
           >
-            {busy ? "Deleting…" : confirmLabel}
+            {busy ? busyLabel : confirmLabel}
           </button>
         </div>
       </section>

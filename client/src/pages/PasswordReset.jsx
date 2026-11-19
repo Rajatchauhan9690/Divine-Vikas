@@ -2,6 +2,8 @@ import { useState } from "react";
 import { ArrowLeft, Flower2 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api";
+import AdminToast from "../components/AdminToast";
+import Seo from "../components/Seo";
 
 export default function PasswordReset() {
   const [email, setEmail] = useState("");
@@ -9,24 +11,24 @@ export default function PasswordReset() {
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [step, setStep] = useState("request");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [toast, setToast] = useState(null);
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
 
   async function requestCode(event) {
     event.preventDefault();
-    setMessage("");
-    setError("");
     setBusy(true);
     try {
-      await api.post("/auth/password-reset/request", { email });
+      const { data } = await api.post("/auth/password-reset/request", { email });
       setStep("verify");
+      setToast({ type: "success", text: data.message });
     } catch (requestError) {
-      setError(
-        requestError.response?.data?.message ||
+      setToast({
+        type: "error",
+        text:
+          requestError.response?.data?.message ||
           "We could not send a reset code. Please try again.",
-      );
+      });
     } finally {
       setBusy(false);
     }
@@ -34,10 +36,8 @@ export default function PasswordReset() {
 
   async function resetPassword(event) {
     event.preventDefault();
-    setMessage("");
-    setError("");
     if (password !== confirmation) {
-      setError("The passwords do not match.");
+      setToast({ type: "error", text: "The passwords do not match." });
       return;
     }
     setBusy(true);
@@ -47,13 +47,15 @@ export default function PasswordReset() {
         otp,
         password,
       });
-      setMessage(data.message);
+      setToast({ type: "success", text: data.message });
       setStep("complete");
     } catch (requestError) {
-      setError(
-        requestError.response?.data?.message ||
+      setToast({
+        type: "error",
+        text:
+          requestError.response?.data?.message ||
           "We could not reset your password. Please try again.",
-      );
+      });
     } finally {
       setBusy(false);
     }
@@ -63,6 +65,16 @@ export default function PasswordReset() {
     <div
       className={`auth-form-wrap${step === "verify" ? " auth-form-wrap--verify" : ""}`}
     >
+      <Seo
+        title="Reset Your Password"
+        description="Securely reset the password for your Divine Vikas account."
+        robots="noindex, nofollow"
+      />
+      <AdminToast
+        toast={toast}
+        onDismiss={() => setToast(null)}
+        duration={step === "complete" ? null : 4500}
+      />
       <div className="auth-topbar">
         <div className="auth-brand">
           <Flower2 />
@@ -94,9 +106,6 @@ export default function PasswordReset() {
               ? "Enter the code and choose a new password. The code expires in 10 minutes."
               : "Your password has been changed. Sign in with your new password."}
         </p>
-
-        {message && <p className="notice">{message}</p>}
-        {error && <p className="notice error">{error}</p>}
 
         {step === "request" && (
           <form onSubmit={requestCode} className="form-stack">
@@ -170,8 +179,6 @@ export default function PasswordReset() {
                 setOtp("");
                 setPassword("");
                 setConfirmation("");
-                setMessage("");
-                setError("");
               }}
             >
               Use a different email

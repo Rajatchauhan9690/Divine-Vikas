@@ -30,9 +30,13 @@ export const env = {
   clientOrigin: process.env.CLIENT_ORIGIN || "http://localhost:5173",
   clientOrigins: [
     process.env.CLIENT_ORIGIN || "http://localhost:5173",
+    ...(process.env.CLIENT_ORIGINS || "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
     "https://divine-vikas-mp969ym3q-rajats-projects-149ec79a.vercel.app",
     "https://divine-vikas.vercel.app",
-  ],
+  ].filter((origin, index, origins) => origins.indexOf(origin) === index),
   accessSecret: process.env.ACCESS_TOKEN_SECRET,
   refreshSecret: process.env.REFRESH_TOKEN_SECRET,
   accessTtl: process.env.ACCESS_TOKEN_TTL || "10m",

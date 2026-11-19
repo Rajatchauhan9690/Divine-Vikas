@@ -1,4 +1,5 @@
 import AdminOrders from "../components/AdminOrders";
+import AdminCoupons from "../components/AdminCoupons";
 import AdminBookings from "../components/AdminBookings";
 import AdminClassSessionForm from "../components/AdminClassSessionForm";
 import AdminServices from "../components/AdminServices";
@@ -8,7 +9,7 @@ import SubAdminSubscription from "../components/SubAdminSubscription";
 import AdminToast from "../components/AdminToast";
 import AdminConfirmDialog from "../components/AdminConfirmDialog";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, NavLink, Navigate, useLocation } from "react-router-dom";
+import { NavLink, Navigate, useLocation } from "react-router-dom";
 import {
   Package,
   ShoppingCart,
@@ -30,6 +31,7 @@ import {
 } from "lucide-react";
 import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
+import Seo from "../components/Seo";
 const blank = {
   name: "",
   price: "",
@@ -38,6 +40,10 @@ const blank = {
   description: "",
   image: null,
   stock: "",
+  shippingWeightKg: "",
+  shippingLengthCm: "",
+  shippingBreadthCm: "",
+  shippingHeightCm: "",
   returnable: true,
   returnWindowDays: "",
 };
@@ -52,6 +58,12 @@ function validateProductForm(values, requireImage = true) {
   const errors = {};
   const price = Number(values.price);
   const stock = Number(values.stock);
+  const shippingWeightKg = String(values.shippingWeightKg ?? "").trim();
+  const shippingDimensions = [
+    values.shippingLengthCm,
+    values.shippingBreadthCm,
+    values.shippingHeightCm,
+  ].map((value) => String(value ?? "").trim());
   const returnWindowDays = String(values.returnWindowDays ?? "").trim();
 
   if (typeof values.name !== "string" || values.name.trim().length < 2)
@@ -67,6 +79,28 @@ function validateProductForm(values, requireImage = true) {
 
   if (!values.stock || !Number.isInteger(stock) || stock < 0)
     errors.stock = "Stock must be a whole number of 0 or more.";
+
+  if (
+    shippingWeightKg &&
+    (!Number.isFinite(Number(shippingWeightKg)) ||
+      Number(shippingWeightKg) < 0.001 ||
+      Number(shippingWeightKg) > 100)
+  )
+    errors.shippingWeightKg =
+      "Enter a shipping weight between 0.001 and 100 kg.";
+
+  if (
+    shippingDimensions.some(Boolean) &&
+    shippingDimensions.some(
+      (dimension) =>
+        !dimension ||
+        !Number.isFinite(Number(dimension)) ||
+        Number(dimension) < 0.1 ||
+        Number(dimension) > 1000,
+    )
+  )
+    errors.shippingDimensions =
+      "Enter all three product dimensions between 0.1 and 1000 cm, or leave all three blank.";
 
   if (
     values.returnable &&
@@ -111,6 +145,7 @@ export default function Admin() {
     "/classes": "Sessions",
     "/bookings": "Session bookings",
     "/orders": "Orders",
+    "/coupons": "Coupons",
     "/services": "Appointments",
     "/service-bookings": "Appointment bookings",
     "/sub-admins": "Sub-admins",
@@ -309,6 +344,22 @@ export default function Admin() {
       description: product.description || "",
       image: null,
       stock: String(product.stock ?? ""),
+      shippingWeightKg:
+        product.shippingWeightKg == null
+          ? ""
+          : String(product.shippingWeightKg),
+      shippingLengthCm:
+        product.shippingLengthCm == null
+          ? ""
+          : String(product.shippingLengthCm),
+      shippingBreadthCm:
+        product.shippingBreadthCm == null
+          ? ""
+          : String(product.shippingBreadthCm),
+      shippingHeightCm:
+        product.shippingHeightCm == null
+          ? ""
+          : String(product.shippingHeightCm),
       returnable:
         product.returnable !== false &&
         Number.isInteger(product.returnWindowDays) &&
@@ -349,6 +400,11 @@ export default function Admin() {
     <section
       className={`section admin-page${user.role === "sub_admin" ? " admin-page-sub-admin" : ""}`}
     >
+      <Seo
+        title={`${sectionTitle || "Dashboard"} Management`}
+        description="Private Divine Vikas administration workspace."
+        robots="noindex, nofollow"
+      />
       <div className="admin-heading">
         <div>
           <span className="eyebrow">STORE MANAGEMENT</span>
@@ -394,6 +450,7 @@ export default function Admin() {
             <NavLink to="/admin/bookings">Session Bookings</NavLink>
             <NavLink to="/admin/service-bookings">Appointment Bookings</NavLink>
             <NavLink to="/admin/orders">Orders</NavLink>
+            <NavLink to="/admin/coupons">Coupons</NavLink>
             <NavLink to="/admin/sub-admins">Sub-Admins</NavLink>
           </>
         ) : (
@@ -707,6 +764,83 @@ export default function Admin() {
                 />{" "}
                 Non-returnable
               </label>
+              <label>
+                Shipping weight (kg)
+                <input
+                  type="number"
+                  min="0.001"
+                  max="100"
+                  step="0.001"
+                  aria-invalid={Boolean(productErrors.shippingWeightKg)}
+                  aria-describedby="product-shipping-weight-help"
+                  value={form.shippingWeightKg}
+                  onChange={(e) =>
+                    updateProductField("shippingWeightKg", e.target.value)
+                  }
+                />
+                <small
+                  id="product-shipping-weight-help"
+                  className={
+                    productErrors.shippingWeightKg
+                      ? "admin-field-error"
+                      : "admin-field-help"
+                  }
+                  aria-live="polite"
+                >
+                  {productValidationAttempted && productErrors.shippingWeightKg
+                    ? productErrors.shippingWeightKg
+                    : "Optional; required for checkout delivery quotes. Enter the packed weight of one product in kg."}
+                </small>
+              </label>
+              <div className="admin-product-dimensions wide">
+                <span className="admin-product-group-title">
+                  Packed dimensions (cm)
+                </span>
+                <div className="admin-product-dimension-fields">
+                  {[
+                    ["shippingLengthCm", "Length"],
+                    ["shippingBreadthCm", "Breadth"],
+                    ["shippingHeightCm", "Height"],
+                  ].map(([field, label]) => (
+                    <label key={field}>
+                      {label}
+                      <input
+                        type="number"
+                        min="0.1"
+                        max="1000"
+                        step="0.1"
+                        aria-invalid={Boolean(productErrors.shippingDimensions)}
+                        aria-describedby="product-shipping-dimensions-help"
+                        value={form[field]}
+                        onChange={(event) =>
+                          updateProductField(field, event.target.value)
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+                <small
+                  id="product-shipping-dimensions-help"
+                  className={
+                    productValidationAttempted &&
+                    productErrors.shippingDimensions
+                      ? "admin-field-error"
+                      : "admin-field-help"
+                  }
+                  aria-live="polite"
+                  role={
+                    productValidationAttempted &&
+                    productErrors.shippingDimensions
+                      ? "alert"
+                      : undefined
+                  }
+                >
+                  {productValidationAttempted &&
+                  productErrors.shippingDimensions
+                    ? productErrors.shippingDimensions
+                    : "Optional, but required for automatic shipping. Enter all three packed dimensions; automatic orders stack items vertically."}
+                </small>
+              </div>
               <label className="wide">
                 Product image
                 <input
@@ -771,8 +905,9 @@ export default function Admin() {
               </label>
               <label className="wide">
                 Description
-                <input
+                <textarea
                   required
+                  rows="4"
                   maxLength="3000"
                   aria-invalid={Boolean(productErrors.description)}
                   aria-describedby={
@@ -816,9 +951,21 @@ export default function Admin() {
                     <b>{p.name}</b>
                   </div>
                   <div className="admin-product-meta">
-                    <span>{p.category}</span>
-                    <span>₹{p.price}</span>
-                    <span>{p.stock} in stock</span>
+                    <span title="Category">{p.category}</span>
+                    <span title="Price">₹{p.price}</span>
+                    <span title="Stock">{p.stock} in stock</span>
+                    <span>
+                      {p.shippingWeightKg
+                        ? `Weight ${p.shippingWeightKg} kg`
+                        : "Weight unavailable"}
+                    </span>
+                    <span>
+                      {p.shippingLengthCm &&
+                      p.shippingBreadthCm &&
+                      p.shippingHeightCm
+                        ? `Size ${p.shippingLengthCm} × ${p.shippingBreadthCm} × ${p.shippingHeightCm} cm`
+                        : "Size unavailable"}
+                    </span>
                     <span>
                       {p.returnable === false
                         ? "Non-returnable"
@@ -888,6 +1035,7 @@ export default function Admin() {
         </>
       )}
       {section === "/orders" && <AdminOrders />}
+      {section === "/coupons" && user.role === "admin" && <AdminCoupons />}
       {section === "/classes" && <AdminClassSessionForm />}
       {section === "/bookings" && <AdminBookings />}
       {section === "/services" && <AdminServices />}
