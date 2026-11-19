@@ -117,6 +117,15 @@ const schema = new mongoose.Schema(
         length: Number,
         breadth: Number,
         height: Number,
+        packages: [
+          {
+            units: Number,
+            weight: Number,
+            length: Number,
+            breadth: Number,
+            height: Number,
+          },
+        ],
       },
       autoBookingStatus: {
         type: String,

@@ -47,7 +47,7 @@ async function buildOrderItems(raw) {
   for (const item of raw) {
     const product = byId.get(String(item.product));
     const quantity = Number(item.quantity);
-    if (!product || !Number.isInteger(quantity) || quantity < 1 || quantity > 20)
+    if (!product || !Number.isInteger(quantity) || quantity < 1)
       throw new AppError("An order item is invalid", 400, "INVALID_ORDER_ITEM");
     if (product.stock < quantity)
       throw new AppError(
@@ -141,10 +141,12 @@ export const quoteOrderShipping = asyncHandler(async (req, res) => {
     req.body.shippingAddress,
     subtotal,
   );
+  const packing = calculateShippingPackage(items);
   res.json({
     success: true,
     subtotal,
     couriers,
+    packing: packing.packages,
   });
 });
 

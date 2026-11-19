@@ -70,20 +70,6 @@ export async function automatePaidOrderShipping(orderId) {
       throw new Error(
         `Add shipping weight for ${missingWeights.map((item) => item.name).join(", ")} before automatic shipment booking.`,
       );
-    const hasMissingDimensions = order.items.some(
-      (item) =>
-        !Number.isFinite(item.shippingLengthCm) ||
-        item.shippingLengthCm <= 0 ||
-        !Number.isFinite(item.shippingBreadthCm) ||
-        item.shippingBreadthCm <= 0 ||
-        !Number.isFinite(item.shippingHeightCm) ||
-        item.shippingHeightCm <= 0,
-    );
-    if (hasMissingDimensions)
-      return await requireManualFulfillment(
-        order,
-        "Product dimensions are missing. Enter the actual parcel dimensions and weight in the manual shipping fields below.",
-      );
     const packageData = calculateShippingPackage(order.items);
     const couriers = await getShiprocketCouriers({
       deliveryPostalCode: order.shippingAddress.postalCode,
