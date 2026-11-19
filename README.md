@@ -49,7 +49,8 @@ The server loads settings from `server/.env`. Required values are `MONGODB_URI`,
 | Setting | Purpose |
 | --- | --- |
 | `PORT` | API port; defaults to `5000`. |
-| `CLIENT_ORIGIN` | Primary browser origin used for redirects; defaults to `http://localhost:5173`. The primary origin and the Divine Vikas Vercel deployments are allowed for browser requests. |
+| `CLIENT_ORIGIN` | Primary browser origin used for redirects; defaults to `http://localhost:5173`. |
+| `CLIENT_ORIGINS` | Optional comma-separated additional browser origins allowed for CORS and CSRF (for example, `https://app.example.com`). |
 | `COOKIE_SAME_SITE` | Development cookie policy; defaults to `lax`. Production always uses `none` so the separately hosted Vercel client can send session and CSRF cookies, and marks cookies `Secure`. |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Optional credentials for product image uploads. Keep these server-side. Existing files in `server/uploads/` are also served by the API. |
 | `IMAGE_ORIGINS` | Optional comma-separated image origins allowed by the server's content security policy. |
