@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { api } from "../services/api";
 import AdminToast from "./AdminToast";
-import AdminCardSkeleton from "./AdminCardSkeleton";
 
 const seatStatuses = [
   { key: "available", label: "Available", className: "available" },
@@ -114,11 +113,9 @@ export default function AdminBookings() {
         </div>
       </div>
       {loading ? (
-        <AdminCardSkeleton
-          count={6}
-          layout="grid"
-          className="admin-booking-session-list"
-        />
+        <p className="loading-state" role="status">
+          Loading sessions…
+        </p>
       ) : sessions.length ? (
         (() => {
           const selectedSession = sessions.find(

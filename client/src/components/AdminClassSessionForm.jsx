@@ -11,7 +11,6 @@ import {
 import { api } from "../services/api";
 import AdminToast from "./AdminToast";
 import AdminConfirmDialog from "./AdminConfirmDialog";
-import AdminCardSkeleton from "./AdminCardSkeleton";
 
 function localDateValue(date) {
   const year = date.getFullYear();
@@ -484,7 +483,9 @@ export default function AdminClassSessionForm() {
             key={sessionView}
           >
           {loadingSessions ? (
-            <AdminCardSkeleton count={4} layout="list" />
+            <p className="loading-state" role="status">
+              Loading sessions…
+            </p>
           ) : visibleSessions.map((session) => (
             <div className="admin-class-session-card" key={session._id}>
               <div className="admin-class-session-card-header">
