@@ -4,16 +4,44 @@ import { api } from "../services/api";
 import ProductCard from "../components/ProductCard";
 import ErrorToast from "../components/ErrorToast";
 import Seo from "../components/Seo";
+
+const productCache = new Map();
+const productCacheLimit = 20;
+
+function getProductCacheKey(search, category) {
+  return JSON.stringify([search, category === "All" ? "" : category]);
+}
+
+function cacheProducts(key, products) {
+  productCache.delete(key);
+  productCache.set(key, products);
+  if (productCache.size > productCacheLimit)
+    productCache.delete(productCache.keys().next().value);
+}
+
 export default function Shop() {
-  const [products, setProducts] = useState([]),
+  const initialCacheKey = getProductCacheKey("", "All");
+  const [products, setProducts] = useState(
+      () => productCache.get(initialCacheKey) || [],
+    ),
     [search, setSearch] = useState(""),
     [category, setCategory] = useState("All"),
-    [loading, setLoading] = useState(true),
+    [loading, setLoading] = useState(
+      () => !productCache.has(initialCacheKey),
+    ),
     [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
-    const timer = setTimeout(() => {
+    const cacheKey = getProductCacheKey(search, category);
+    const cachedProducts = productCache.get(cacheKey);
+    if (productCache.has(cacheKey)) {
+      setProducts(cachedProducts);
+      setLoading(false);
+    } else {
+      setProducts([]);
       setLoading(true);
+    }
+    const timer = setTimeout(() => {
       setError("");
       api
         .get("/products", {
@@ -21,7 +49,9 @@ export default function Shop() {
           signal: controller.signal,
         })
         .then((r) => {
-          setProducts(r.data.products || []);
+          const nextProducts = r.data.products || [];
+          cacheProducts(cacheKey, nextProducts);
+          setProducts(nextProducts);
         })
         .catch(() => {
           if (!controller.signal.aborted)
@@ -78,21 +108,9 @@ export default function Shop() {
       </div>
       {error && <p className="notice error">{error}</p>}
       {loading ? (
-        <div className="product-grid shop-skeleton-grid" role="status" aria-label="Loading fragrances">
-          {Array.from({ length: 8 }, (_, index) => (
-            <article className="product-card shop-skeleton-card" key={index}>
-              <div className="shop-skeleton shop-skeleton-image" />
-              <div className="product-info">
-                <div className="shop-skeleton shop-skeleton-title" />
-                <div className="shop-skeleton shop-skeleton-description" />
-                <div className="product-bottom">
-                  <div className="shop-skeleton shop-skeleton-price" />
-                  <div className="shop-skeleton shop-skeleton-rating" />
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
+        <p className="loading-state" role="status">
+          Loading fragrances…
+        </p>
       ) : products.length ? (
         <div className="product-grid">
           {products.map((p) => (

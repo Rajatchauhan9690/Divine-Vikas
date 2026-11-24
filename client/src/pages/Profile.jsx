@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { ArrowUpRight, CalendarDays, Clock3 } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ArrowUpRight, CalendarDays, Clock3, LogOut } from "lucide-react";
 import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
 import AdminToast from "../components/AdminToast";
@@ -26,6 +27,7 @@ export default function Profile() {
     [addressFormOpen, setAddressFormOpen] = useState(false),
     [addressToDelete, setAddressToDelete] = useState(null),
     [confirmSignOutAll, setConfirmSignOutAll] = useState(false),
+    [signingOutAll, setSigningOutAll] = useState(false),
     [name, setName] = useState(""),
     [phone, setPhone] = useState(""),
     [toast, setToast] = useState(null),
@@ -48,6 +50,12 @@ export default function Profile() {
         ),
       );
   }, [user]);
+  useEffect(() => {
+    if (!profile && user) {
+      setName(user.name || "");
+      setPhone(user.phone || "");
+    }
+  }, [profile, user]);
   useEffect(() => {
     if (!addressToDelete) return;
     function handleKeyDown(event) {
@@ -88,6 +96,7 @@ export default function Profile() {
   async function signOutAllDevices() {
     setConfirmSignOutAll(false);
     setBusy(true);
+    setSigningOutAll(true);
     try {
       await logoutAll();
     } catch (e) {
@@ -97,6 +106,7 @@ export default function Profile() {
           "Could not sign out on all devices. Please try again.",
       );
     } finally {
+      setSigningOutAll(false);
       setBusy(false);
     }
   }
@@ -235,7 +245,7 @@ export default function Profile() {
               disabled={busy}
               onClick={() => setConfirmSignOutAll(true)}
             >
-              {busy ? "Signing out…" : "Sign out everywhere"}
+              {signingOutAll ? "Signing out…" : "Sign out everywhere"}
             </button>
           </div>
         </form>
@@ -460,47 +470,53 @@ export default function Profile() {
           </div>
         </div>
       )}
-      {confirmSignOutAll && (
-        <div
-          className="confirm-overlay"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !busy)
-              setConfirmSignOutAll(false);
-          }}
-        >
+      {confirmSignOutAll &&
+        createPortal(
           <div
-            className="confirm-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="sign-out-all-title"
-            aria-describedby="sign-out-all-description"
+            className="class-exit-overlay confirm-overlay"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !busy)
+                setConfirmSignOutAll(false);
+            }}
           >
-            <h2 id="sign-out-all-title">Sign out everywhere?</h2>
-            <p id="sign-out-all-description">
-              This will end all active sessions for your account, including this device. You will need to sign in again.
-            </p>
-            <div className="inline-actions">
-              <button
-                type="button"
-                className="btn btn-outline"
-                disabled={busy}
-                autoFocus
-                onClick={() => setConfirmSignOutAll(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-dark"
-                disabled={busy}
-                onClick={signOutAllDevices}
-              >
-                {busy ? "Signing out…" : "Sign out everywhere"}
-              </button>
+            <div
+              className="class-exit-dialog confirm-dialog"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="sign-out-all-title"
+              aria-describedby="sign-out-all-description"
+            >
+              <div className="class-exit-icon" aria-hidden="true">
+                <LogOut size={23} />
+              </div>
+              <span className="eyebrow">ACCOUNT SECURITY</span>
+              <h2 id="sign-out-all-title">Sign out everywhere?</h2>
+              <p id="sign-out-all-description">
+                This will end all active sessions for your account, including this device. You will need to sign in again.
+              </p>
+              <div className="class-exit-actions inline-actions">
+                <button
+                  type="button"
+                  className="btn class-flow-button class-flow-button--green"
+                  disabled={busy}
+                  autoFocus
+                  onClick={() => setConfirmSignOutAll(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn class-flow-button class-flow-button--danger"
+                  disabled={busy}
+                  onClick={signOutAllDevices}
+                >
+                  {signingOutAll ? "Signing out…" : "Sign out everywhere"}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </section>
   );
 }

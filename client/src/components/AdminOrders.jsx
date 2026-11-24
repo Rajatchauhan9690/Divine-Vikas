@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import { api } from "../services/api";
 import AdminToast from "./AdminToast";
-import AdminCardSkeleton from "./AdminCardSkeleton";
 import AdminConfirmDialog from "./AdminConfirmDialog";
 const statuses = ["pending", "paid", "processing", "shipped", "delivered"];
 const statusOrder = ["pending", "paid", "processing", "shipped", "delivered"];
@@ -272,7 +271,9 @@ export default function AdminOrders() {
       ) : (
         <div className="admin-order-card-grid">
           {loading ? (
-            <AdminCardSkeleton count={6} layout="grid" />
+            <p className="loading-state" role="status">
+              Loading orders…
+            </p>
           ) : orders.map((order) => (
             <button
               type="button"

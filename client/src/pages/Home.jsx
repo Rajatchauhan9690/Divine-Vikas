@@ -90,39 +90,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-      {!isAdmin && !isSubAdmin && (
-        <section className="home-booking-links section">
-        <div className="home-booking-heading">
-          <span className="eyebrow">MAKE TIME FOR YOURSELF</span>
-          <h2>
-            Find your <em>next moment.</em>
-          </h2>
-          <p>Choose an appointment or session at a time that works for you.</p>
-        </div>
-        <div className="home-booking-actions">
-          <Link className="home-booking-card" to="/classes">
-            <span className="home-booking-icon">
-              <CalendarDays size={21} />
-            </span>
-            <span className="home-booking-card-copy">
-              <strong>Book a session</strong>
-              <small>Explore upcoming classes and sessions</small>
-            </span>
-            <ArrowUpRight size={20} aria-hidden="true" />
-          </Link>
-          <Link className="home-booking-card" to="/services">
-            <span className="home-booking-icon">
-              <Clock3 size={21} />
-            </span>
-            <span className="home-booking-card-copy">
-              <strong>Book an appointment</strong>
-              <small>Choose a time for a personal visit</small>
-            </span>
-            <ArrowUpRight size={20} aria-hidden="true" />
-          </Link>
-        </div>
-        </section>
-      )}
       <section className="promise-strip">
         <div>
           <span className="promise-icon">
@@ -197,6 +164,39 @@ export default function Home() {
           </div>
         )}
       </section>
+      {!isAdmin && !isSubAdmin && (
+        <section className="home-booking-links section">
+          <div className="home-booking-heading">
+            <span className="eyebrow">MAKE TIME FOR YOURSELF</span>
+            <h2>
+              Find your <em>next moment.</em>
+            </h2>
+            <p>Choose an appointment or session at a time that works for you.</p>
+          </div>
+          <div className="home-booking-actions">
+            <Link className="home-booking-card" to="/classes">
+              <span className="home-booking-icon">
+                <CalendarDays size={21} />
+              </span>
+              <span className="home-booking-card-copy">
+                <strong>Book a session</strong>
+                <small>Explore upcoming classes and sessions</small>
+              </span>
+              <ArrowUpRight size={20} aria-hidden="true" />
+            </Link>
+            <Link className="home-booking-card" to="/services">
+              <span className="home-booking-icon">
+                <Clock3 size={21} />
+              </span>
+              <span className="home-booking-card-copy">
+                <strong>Book an appointment</strong>
+                <small>Choose a time for a personal visit</small>
+              </span>
+              <ArrowUpRight size={20} aria-hidden="true" />
+            </Link>
+          </div>
+        </section>
+      )}
       <section className="story-section" id="story">
         <div className="story-image">
           <img

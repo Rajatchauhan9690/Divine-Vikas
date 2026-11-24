@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Pencil, Plus, Tag, Trash2 } from "lucide-react";
 import { api } from "../services/api";
 import AdminToast from "./AdminToast";
-import AdminCardSkeleton from "./AdminCardSkeleton";
 
 const blankCoupon = {
   code: "",
@@ -315,11 +314,9 @@ export default function AdminCoupons() {
           </div>
         </div>
         {loading ? (
-          <AdminCardSkeleton
-            count={3}
-            layout="list"
-            className="admin-coupon-cards"
-          />
+          <p className="loading-state" role="status">
+            Loading coupons…
+          </p>
         ) : coupons.length ? (
           <div className="admin-coupon-cards">
             {coupons.map((coupon) => (

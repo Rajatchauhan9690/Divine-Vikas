@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Clock3, Search } from "lucide-react";
 import { api } from "../services/api";
 import AdminToast from "./AdminToast";
-import AdminCardSkeleton from "./AdminCardSkeleton";
 
 const bookingsPerPage = 6;
 
@@ -118,11 +117,9 @@ export default function AdminServiceBookings() {
         </div>
       </div>
       {loading ? (
-        <AdminCardSkeleton
-          count={6}
-          layout="grid"
-          className="admin-booking-session-list"
-        />
+        <p className="loading-state" role="status">
+          Loading bookings…
+        </p>
       ) : selectedBooking ? (
         <div className="admin-booking-detail">
           <button

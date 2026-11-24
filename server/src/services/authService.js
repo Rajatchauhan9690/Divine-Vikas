@@ -32,7 +32,13 @@ export async function issueSession(user, req, res) {
   res.cookie("refreshToken", refresh, cookieOptions());
   return {
     accessToken: signAccess(user, sid),
-    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+    },
   };
 }
 export async function rotateSession(req, res) {
@@ -115,6 +121,12 @@ export async function rotateSession(req, res) {
   res.cookie("refreshToken", nextToken, cookieOptions());
   return {
     accessToken: signAccess(user, payload.sid),
-    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+    },
   };
 }

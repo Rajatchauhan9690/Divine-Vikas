@@ -133,7 +133,7 @@ export default function Product() {
         </div>
         <p className={p.stock > 0 ? "stock" : "stock out"}>
           {p.stock > 0
-            ? `In stock · ${p.stock} available`
+            ? "In stock"
             : "Currently out of stock"}
         </p>
         {canPurchase && <div className="product-purchase-actions">

@@ -23,6 +23,7 @@ const cancellationWindowMs = 6 * 60 * 60 * 1000;
 const ORDERS_PER_PAGE = 6;
 const shiprocketBookingNote =
   "Shiprocket shipment booked; awaiting parcel packing and courier pickup.";
+const ordersCache = new Map();
 const orderProgressSteps = [
   { status: "placed", label: "Order placed" },
   { status: "processing", label: "Processing" },
@@ -169,11 +170,14 @@ function getOrderReturnWindowDays(order) {
 export default function Orders() {
   const { user, ready } = useAuth();
   const { items: cartItems, remove } = useCart();
-  const [orders, setOrders] = useState([]),
+  const cachedOrders = user?.id ? ordersCache.get(user.id) : undefined;
+  const [orders, setOrders] = useState(() => cachedOrders || []),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(""),
-    [ordersLoaded, setOrdersLoaded] = useState(false);
+    [ordersLoaded, setOrdersLoaded] = useState(
+      () => Boolean(user?.id && ordersCache.has(user.id)),
+    );
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [paymentSuccessDetails, setPaymentSuccessDetails] = useState([]);
   const [ordersPage, setOrdersPage] = useState(1);
@@ -191,11 +195,20 @@ export default function Orders() {
   );
   async function load() {
     const r = await api.get("/orders/mine");
-    setOrders(r.data.orders);
+    const nextOrders = r.data.orders || [];
+    if (user?.id) ordersCache.set(user.id, nextOrders);
+    setOrders(nextOrders);
     setOrdersLoaded(true);
   }
   useEffect(() => {
     if (!user || user.role === "admin") return;
+    if (ordersCache.has(user.id)) {
+      setOrders(ordersCache.get(user.id));
+      setOrdersLoaded(true);
+    } else {
+      setOrders([]);
+      setOrdersLoaded(false);
+    }
     load()
       .catch((e) =>
         setError(e.response?.data?.message || "Could not load orders"),
@@ -412,31 +425,9 @@ export default function Orders() {
         </Link>
       )}
       {!ordersLoaded ? (
-        <div
-          className={`orders-list orders-skeleton-list${orderId ? " order-details-list" : ""}`}
-          role="status"
-          aria-label={orderId ? "Loading order details" : "Loading orders"}
-        >
-          {Array.from({ length: orderId ? 1 : 3 }, (_, index) => (
-            <article className="order-card order-skeleton-card" key={index}>
-              <div className="order-skeleton-head">
-                <div className="order-skeleton-copy">
-                  <span className="order-skeleton order-skeleton-short" />
-                  <span className="order-skeleton order-skeleton-date" />
-                </div>
-                <span className="order-skeleton order-skeleton-status" />
-              </div>
-              <div className="order-skeleton-items">
-                <span className="order-skeleton order-skeleton-icon" />
-                <span className="order-skeleton order-skeleton-item-name" />
-              </div>
-              <div className="order-skeleton-footer">
-                <span className="order-skeleton order-skeleton-total" />
-                <span className="order-skeleton order-skeleton-action" />
-              </div>
-            </article>
-          ))}
-        </div>
+        <p className="loading-state" role="status">
+          {orderId ? "Loading order details…" : "Loading orders…"}
+        </p>
       ) : orderId && !orders.some((order) => order._id === orderId) ? (
         <div className="empty-products">
           <h3>Order not found.</h3>
