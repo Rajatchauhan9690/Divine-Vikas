@@ -176,8 +176,12 @@ export default function Cart() {
     (courier) => String(courier.id) === selectedCourierId,
   );
   const selectedCourierLabel = getCourierLabel(selectedCourier);
+  const currentCouponDiscount =
+    currentCoupon?.discountType === "shipping"
+      ? selectedCourier?.rate || 0
+      : currentCoupon?.discountAmount || 0;
   const orderTotal = Number(
-    (total - (currentCoupon?.discountAmount || 0) + (selectedCourier?.rate || 0)).toFixed(2),
+    (total - currentCouponDiscount + (selectedCourier?.rate || 0)).toFixed(2),
   );
   useEffect(() => {
     const search = couponSearch.trim();
@@ -191,6 +195,7 @@ export default function Cart() {
         const { data } = await api.post("/orders/coupons/search", {
           search,
           items: couponItems,
+          shippingCost: selectedCourier?.rate || 0,
         });
         if (active) setCouponSuggestions(data.coupons || []);
       } catch {
@@ -202,7 +207,12 @@ export default function Cart() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [couponSearch, couponItemsKey, Boolean(currentCoupon)]);
+  }, [
+    couponSearch,
+    couponItemsKey,
+    Boolean(currentCoupon),
+    selectedCourier?.rate,
+  ]);
   useEffect(() => {
     if (!showPaymentExitConfirm) return undefined;
     const handleKeyDown = (event) => {
@@ -246,6 +256,7 @@ export default function Cart() {
       const { data } = await api.post("/orders/coupons/validate", {
         code: normalizedCode,
         items: couponItems,
+        shippingCost: selectedCourier?.rate || 0,
       });
       setAppliedCoupon({ ...data.coupon, itemsKey: couponItemsKey });
       setCouponSearch(data.coupon.code);
@@ -786,7 +797,11 @@ export default function Cart() {
                   <div className="cart-coupon-applied">
                     <span>
                       <b>{currentCoupon.code}</b>
-                      <small>Coupon applied</small>
+                      <small>
+                        {currentCoupon.discountType === "shipping"
+                          ? "Free delivery applied"
+                          : "Coupon applied"}
+                      </small>
                     </span>
                     <button
                       type="button"
@@ -834,13 +849,18 @@ export default function Cart() {
                               <b>{coupon.code}</b>
                               <small>
                                 {coupon.description ||
-                                  (coupon.discountType === "percent"
-                                    ? `${coupon.value}% off`
-                                    : `₹${coupon.value} off`)}
+                                  (coupon.discountType === "shipping"
+                                    ? "Free delivery"
+                                    : coupon.discountType === "percent"
+                                      ? `${coupon.value}% off`
+                                      : `₹${coupon.value} off`)}
                               </small>
                             </span>
                             <strong>
-                              Save ₹{coupon.discountAmount.toFixed(2)}
+                              {coupon.discountType === "shipping" &&
+                              !selectedCourier
+                                ? "Free delivery"
+                                : `Save ₹${coupon.discountAmount.toFixed(2)}`}
                             </strong>
                           </button>
                         ))}
@@ -857,8 +877,16 @@ export default function Cart() {
             )}
             {currentCoupon && (
               <div className="cart-coupon-discount">
-                <span>Coupon discount</span>
-                <b>−₹{currentCoupon.discountAmount.toFixed(2)}</b>
+                <span>
+                  {currentCoupon.discountType === "shipping"
+                    ? "Delivery discount"
+                    : "Coupon discount"}
+                </span>
+                <b>
+                  {currentCoupon.discountType === "shipping" && !selectedCourier
+                    ? "Free delivery"
+                    : `−₹${currentCouponDiscount.toFixed(2)}`}
+                </b>
               </div>
             )}
             <div>

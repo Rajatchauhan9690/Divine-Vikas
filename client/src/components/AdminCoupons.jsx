@@ -160,7 +160,7 @@ export default function AdminCoupons() {
           <span className="admin-coupon-icon"><Tag size={18} /></span>
           <div>
             <h2>{editingId ? "Edit coupon" : "Create a coupon"}</h2>
-            <p>Set a percentage or fixed discount and control when it can be used.</p>
+            <p>Set a product or delivery discount and control when it can be used.</p>
           </div>
         </div>
         <div className="admin-coupon-grid">
@@ -201,22 +201,29 @@ export default function AdminCoupons() {
             >
               <option value="percent">Percentage</option>
               <option value="fixed">Fixed amount (₹)</option>
+              <option value="shipping">Free delivery</option>
             </select>
           </label>
-          <label>
-            {form.discountType === "percent" ? "Discount (%)" : "Discount (₹)"}
-            <input
-              required
-              type="number"
-              min="0.01"
-              max={form.discountType === "percent" ? "100" : undefined}
-              step="0.01"
-              value={form.value}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, value: event.target.value }))
-              }
-            />
-          </label>
+          {form.discountType === "shipping" ? (
+            <p className="admin-coupon-shipping-note">
+              This coupon covers the verified delivery fee at checkout.
+            </p>
+          ) : (
+            <label>
+              {form.discountType === "percent" ? "Discount (%)" : "Discount (₹)"}
+              <input
+                required
+                type="number"
+                min="0.01"
+                max={form.discountType === "percent" ? "100" : undefined}
+                step="0.01"
+                value={form.value}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, value: event.target.value }))
+                }
+              />
+            </label>
+          )}
           {form.discountType === "percent" && (
             <label>
               Maximum discount (₹, optional)
@@ -327,9 +334,11 @@ export default function AdminCoupons() {
                     {coupon.active ? "Active" : "Inactive"}
                   </span>
                   <b>
-                    {coupon.discountType === "percent"
-                      ? `${coupon.value}% off${coupon.maxDiscountAmount ? ` · up to ₹${coupon.maxDiscountAmount}` : ""}`
-                      : `₹${coupon.value} off`}
+                    {coupon.discountType === "shipping"
+                      ? "Free delivery"
+                      : coupon.discountType === "percent"
+                        ? `${coupon.value}% off${coupon.maxDiscountAmount ? ` · up to ₹${coupon.maxDiscountAmount}` : ""}`
+                        : `₹${coupon.value} off`}
                   </b>
                   <small>
                     Minimum ₹{coupon.minimumOrderAmount || 0} ·{" "}

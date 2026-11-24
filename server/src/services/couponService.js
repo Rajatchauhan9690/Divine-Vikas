@@ -5,7 +5,9 @@ export function normalizeCouponCode(code) {
   return typeof code === "string" ? code.trim().toUpperCase() : "";
 }
 
-export function couponDiscount(coupon, subtotal) {
+export function couponDiscount(coupon, subtotal, shippingCost = 0) {
+  if (coupon.discountType === "shipping")
+    return Number(Math.max(0, Number(shippingCost) || 0).toFixed(2));
   let amount =
     coupon.discountType === "percent"
       ? (subtotal * coupon.value) / 100
@@ -26,7 +28,7 @@ function isAvailable(coupon, subtotal, now = new Date()) {
   );
 }
 
-export function couponDetails(coupon, subtotal) {
+export function couponDetails(coupon, subtotal, shippingCost = 0) {
   return {
     code: coupon.code,
     description: coupon.description,
@@ -34,24 +36,41 @@ export function couponDetails(coupon, subtotal) {
     value: coupon.value,
     maxDiscountAmount: coupon.maxDiscountAmount,
     minimumOrderAmount: coupon.minimumOrderAmount,
-    discountAmount: couponDiscount(coupon, subtotal),
+    discountAmount: couponDiscount(coupon, subtotal, shippingCost),
   };
 }
 
-export async function findEligibleCoupon(code, subtotal) {
+function belongsToUser(coupon, userId) {
+  return !coupon.issuedTo || String(coupon.issuedTo) === String(userId || "");
+}
+
+export async function findEligibleCoupon(
+  code,
+  subtotal,
+  shippingCost = 0,
+  userId = null,
+) {
   const coupon = await Coupon.findOne({ code: normalizeCouponCode(code) });
-  if (!coupon || !isAvailable(coupon, subtotal))
+  if (!coupon || !belongsToUser(coupon, userId) || !isAvailable(coupon, subtotal))
     throw new AppError(
       "This coupon is invalid, expired, or not available for this order.",
       400,
       "COUPON_UNAVAILABLE",
     );
-  return { coupon, details: couponDetails(coupon, subtotal) };
+  return { coupon, details: couponDetails(coupon, subtotal, shippingCost) };
 }
 
-export async function reserveCoupon(code, subtotal) {
+export async function reserveCoupon(
+  code,
+  subtotal,
+  shippingCost = 0,
+  userId = null,
+) {
   const normalizedCode = normalizeCouponCode(code);
   const now = new Date();
+  const ownershipFilter = userId
+    ? { $or: [{ issuedTo: null }, { issuedTo: userId }] }
+    : { issuedTo: null };
   const coupon = await Coupon.findOneAndUpdate(
     {
       code: normalizedCode,
@@ -59,6 +78,7 @@ export async function reserveCoupon(code, subtotal) {
       $and: [
         { $or: [{ startsAt: null }, { startsAt: { $lte: now } }] },
         { $or: [{ endsAt: null }, { endsAt: { $gt: now } }] },
+        ownershipFilter,
       ],
       minimumOrderAmount: { $lte: subtotal },
       $or: [
@@ -79,7 +99,7 @@ export async function reserveCoupon(code, subtotal) {
       409,
       "COUPON_UNAVAILABLE",
     );
-  return { coupon, details: couponDetails(coupon, subtotal) };
+  return { coupon, details: couponDetails(coupon, subtotal, shippingCost) };
 }
 
 export async function releaseCouponReservation(attempt) {

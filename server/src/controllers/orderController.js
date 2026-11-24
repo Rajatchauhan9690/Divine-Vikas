@@ -196,7 +196,13 @@ export const createOrder = asyncHandler(async (req, res) => {
   const couponCode = typeof req.body.couponCode === "string"
     ? req.body.couponCode.trim()
     : "";
-  if (couponCode) await findEligibleCoupon(couponCode, subtotal);
+  if (couponCode)
+    await findEligibleCoupon(
+      couponCode,
+      subtotal,
+      shippingCost,
+      req.user._id,
+    );
   let couponReservation = null;
   let discountAmount = 0;
   let total = Number((subtotal + shippingCost).toFixed(2));
@@ -224,7 +230,12 @@ export const createOrder = asyncHandler(async (req, res) => {
   let attempt;
   try {
     if (couponCode) {
-      couponReservation = await reserveCoupon(couponCode, subtotal);
+      couponReservation = await reserveCoupon(
+        couponCode,
+        subtotal,
+        shippingCost,
+        req.user._id,
+      );
       discountAmount = couponReservation.details.discountAmount;
       total = Number((subtotal - discountAmount + shippingCost).toFixed(2));
     }

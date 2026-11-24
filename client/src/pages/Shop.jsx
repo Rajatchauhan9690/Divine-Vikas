@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { api } from "../services/api";
 import ProductCard from "../components/ProductCard";
+import ProductGridSkeleton from "../components/ProductGridSkeleton";
 import ErrorToast from "../components/ErrorToast";
 import Seo from "../components/Seo";
 
@@ -108,16 +109,14 @@ export default function Shop() {
       </div>
       {error && <p className="notice error">{error}</p>}
       {loading ? (
-        <p className="loading-state" role="status">
-          Loading fragrances…
-        </p>
+        <ProductGridSkeleton />
       ) : products.length ? (
         <div className="product-grid">
           {products.map((p) => (
             <ProductCard key={p._id} product={p} />
           ))}
         </div>
-      ) : (
+      ) : !error ? (
         <div className="empty-products">
           <span>✳</span>
           <h3>No fragrances found</h3>
@@ -126,7 +125,7 @@ export default function Shop() {
             panel.
           </p>
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

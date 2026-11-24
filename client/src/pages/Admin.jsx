@@ -433,6 +433,16 @@ export default function Admin() {
         <AdminConfirmDialog
           title={`Delete "${productToDelete.name}"?`}
           description="This product will be permanently deleted. This action cannot be undone."
+          confirmLabel="Delete permanently"
+          eyebrow="PRODUCT DELETION"
+          icon={<Trash2 size={23} />}
+          overlayClassName="class-exit-overlay confirm-overlay"
+          dialogClassName="class-exit-dialog confirm-dialog"
+          actionsClassName="class-exit-actions"
+          cancelLabel="Keep product"
+          cancelClassName="btn class-flow-button class-flow-button--green"
+          confirmClassName="btn class-flow-button class-flow-button--danger"
+          role="alertdialog"
           busy={deletingProduct === productToDelete._id}
           onCancel={() => setProductToDelete(null)}
           onConfirm={() => remove(productToDelete._id)}

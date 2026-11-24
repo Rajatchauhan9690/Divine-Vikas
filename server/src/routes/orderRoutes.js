@@ -10,6 +10,7 @@ import {
   verifyCashfreePayment,
 } from "../controllers/orderController.js";
 import {
+  issueOfferingGameReward,
   searchCoupons,
   validateCoupon,
 } from "../controllers/couponController.js";
@@ -17,6 +18,7 @@ import { protect, authorize } from "../middleware/auth.js";
 const r = Router();
 r.use(protect);
 r.patch("/:orderId/status", authorize("admin"), adminUpdateOrder);
+r.post("/coupons/game-reward", authorize("customer"), issueOfferingGameReward);
 r.use(authorize("customer", "sub_admin"));
 r.post("/shipping-quotes", quoteOrderShipping);
 r.post("/coupons/search", searchCoupons);

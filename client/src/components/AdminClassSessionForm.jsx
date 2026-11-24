@@ -352,6 +352,16 @@ export default function AdminClassSessionForm() {
         <AdminConfirmDialog
           title={`Delete "${sessionToDelete.title}"?`}
           description="Sessions with held or booked seats cannot be deleted. This action cannot be undone."
+          confirmLabel="Delete permanently"
+          eyebrow="SESSION DELETION"
+          icon={<Trash2 size={23} />}
+          overlayClassName="class-exit-overlay confirm-overlay"
+          dialogClassName="class-exit-dialog confirm-dialog"
+          actionsClassName="class-exit-actions"
+          cancelLabel="Keep session"
+          cancelClassName="btn class-flow-button class-flow-button--green"
+          confirmClassName="btn class-flow-button class-flow-button--danger"
+          role="alertdialog"
           busy={deletingSession === sessionToDelete._id}
           onCancel={() => setSessionToDelete(null)}
           onConfirm={() => deleteSession(sessionToDelete)}

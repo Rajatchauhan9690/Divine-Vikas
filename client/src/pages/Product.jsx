@@ -13,12 +13,27 @@ import { useCart } from "../features/cart/CartContext";
 import { useAuth } from "../features/auth/AuthContext";
 import ErrorToast from "../components/ErrorToast";
 import Seo from "../components/Seo";
+
+const productCache = new Map();
+const productCacheLimit = 20;
+
+function cacheProduct(id, product) {
+  productCache.delete(id);
+  productCache.set(id, product);
+  if (productCache.size > productCacheLimit)
+    productCache.delete(productCache.keys().next().value);
+}
+
 export default function Product() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [p, setP] = useState(null),
+  const [productState, setProductState] = useState(() => ({
+      id,
+      product: productCache.get(id) || null,
+    })),
     [error, setError] = useState(""),
     [added, setAdded] = useState(false);
+  const p = productState.id === id ? productState.product : null;
   const { add } = useCart();
   const { user, ready } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -33,10 +48,24 @@ export default function Product() {
   }
   useEffect(() => {
     setAdded(false);
+    setError("");
+    const cachedProduct = productCache.get(id);
+    setProductState({ id, product: cachedProduct || null });
+    if (cachedProduct) return;
+
+    const controller = new AbortController();
     api
-      .get(`/products/${id}`)
-      .then((r) => setP(r.data.product))
-      .catch(() => setError("This fragrance could not be found."));
+      .get(`/products/${id}`, { signal: controller.signal })
+      .then((r) => {
+        const product = r.data.product;
+        cacheProduct(id, product);
+        setProductState({ id, product });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted)
+          setError("This fragrance could not be found.");
+      });
+    return () => controller.abort();
   }, [id]);
   if (error)
     return (
@@ -58,7 +87,30 @@ export default function Product() {
           title="Discover Our Fragrances"
           description="Explore thoughtful, quality-first fragrances from Divine Vikas."
         />
-        <div className="loading-state">Finding your fragrance…</div>
+        <section
+          className="section product-detail product-detail--skeleton"
+          role="status"
+          aria-label="Loading product details"
+          aria-busy="true"
+        >
+          <div className="detail-image skeleton-shimmer" aria-hidden="true" />
+          <div className="detail-copy" aria-hidden="true">
+            <div className="product-detail-skeleton-line product-detail-skeleton-category skeleton-shimmer" />
+            <div className="product-detail-skeleton-line product-detail-skeleton-title skeleton-shimmer" />
+            <div className="product-detail-skeleton-line product-detail-skeleton-rating skeleton-shimmer" />
+            <div className="product-detail-skeleton-line product-detail-skeleton-price skeleton-shimmer" />
+            <div className="product-detail-skeleton-line product-detail-skeleton-description skeleton-shimmer" />
+            <div className="product-detail-skeleton-line product-detail-skeleton-description product-detail-skeleton-description--short skeleton-shimmer" />
+            <div className="product-detail-skeleton-benefits">
+              <div className="product-detail-skeleton-line skeleton-shimmer" />
+              <div className="product-detail-skeleton-line skeleton-shimmer" />
+            </div>
+            <div className="product-detail-skeleton-actions">
+              <div className="skeleton-shimmer" />
+              <div className="skeleton-shimmer" />
+            </div>
+          </div>
+        </section>
       </>
     );
   return (

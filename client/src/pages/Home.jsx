@@ -12,20 +12,31 @@ import { useEffect, useState } from "react";
 import { api } from "../services/api";
 import { useAuth } from "../features/auth/AuthContext";
 import ProductCard from "../components/ProductCard";
+import ProductGridSkeleton from "../components/ProductGridSkeleton";
 import Seo from "../components/Seo";
 export default function Home() {
   const { user } = useAuth();
   const [products, setProducts] = useState([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState("");
   const isSubAdmin = user?.role === "sub_admin";
   const isAdmin = user?.role === "admin";
   useEffect(() => {
+    const controller = new AbortController();
     api
-      .get("/products")
+      .get("/products", { signal: controller.signal })
       .then((r) => setProducts(r.data.products || []))
-      .catch(() => setProducts([]));
+      .catch(() => {
+        if (!controller.signal.aborted)
+          setProductsError("Could not load fragrances. Please try again later.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setProductsLoading(false);
+      });
+    return () => controller.abort();
   }, []);
   return (
-    <>
+    <div className="home-page">
       <Seo
         title="Luxury Fragrances Inspired by Devotion"
         description="Discover Divine Vikas fragrances: thoughtful, quality-first scents for everyday luxury, inspired by bhav and bhakti."
@@ -52,11 +63,9 @@ export default function Home() {
             quality. Find a fragrance that feels like you.
           </p>
           <div className="hero-actions">
-            {!isAdmin && (
-              <Link className="btn btn-dark" to="/shop">
-                Explore fragrances <ArrowUpRight size={17} />
-              </Link>
-            )}
+            <Link className="btn btn-dark" to="/shop">
+              Explore fragrances <ArrowUpRight size={17} />
+            </Link>
             <a className="text-link" href="#story">
               Our philosophy
             </a>
@@ -142,7 +151,9 @@ export default function Home() {
             </Link>
           )}
         </div>
-        {products.length ? (
+        {productsLoading ? (
+          <ProductGridSkeleton count={4} />
+        ) : products.length ? (
           <div className="product-grid">
             {products.slice(0, 4).map((p) => (
               <ProductCard key={p._id} product={p} />
@@ -151,10 +162,14 @@ export default function Home() {
         ) : (
           <div className="empty-products">
             <span>✳</span>
-            <h3>A little calm, a little fragrance.</h3>
+            <h3>
+              {productsError
+                ? "Fragrances are temporarily unavailable."
+                : "A little calm, a little fragrance."}
+            </h3>
             <p>
-              Our collection will appear here once products are added to the
-              database.
+              {productsError ||
+                "Our collection will appear here once products are added to the database."}
             </p>
             {!isAdmin && (
               <Link className="btn btn-outline" to="/shop">
@@ -171,7 +186,9 @@ export default function Home() {
             <h2>
               Find your <em>next moment.</em>
             </h2>
-            <p>Choose an appointment or session at a time that works for you.</p>
+            <p>
+              Choose an appointment or session at a time that works for you.
+            </p>
           </div>
           <div className="home-booking-actions">
             <Link className="home-booking-card" to="/classes">
@@ -231,6 +248,6 @@ export default function Home() {
         <p>“A little fragrance. A lot of feeling.”</p>
         <small>THE DIVINE VIKAS PHILOSOPHY</small>
       </section>
-    </>
+    </div>
   );
 }
