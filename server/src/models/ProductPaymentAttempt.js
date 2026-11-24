@@ -31,7 +31,11 @@ const schema = new mongoose.Schema(
     coupon: {
       couponId: { type: mongoose.Schema.Types.ObjectId, ref: "Coupon", default: null },
       code: { type: String, default: "" },
-      discountType: { type: String, enum: ["percent", "fixed", null], default: null },
+      discountType: {
+        type: String,
+        enum: ["percent", "fixed", "shipping", null],
+        default: null,
+      },
       value: { type: Number, default: null },
       reservationStatus: {
         type: String,

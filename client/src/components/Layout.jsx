@@ -11,12 +11,11 @@ import {
   Package,
   LogOut,
   MessageCircle,
+  Play,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Suspense } from "react";
 import { useAuth } from "../features/auth/AuthContext";
 import { useCart } from "../features/cart/CartContext";
-import RouteLoading from "./RouteLoading";
 export default function Layout() {
   const [open, setOpen] = useState(false);
   const { user, logout } = useAuth();
@@ -27,6 +26,7 @@ export default function Layout() {
     pathname === "/register" ||
     pathname === "/password-reset";
   const isInvitationPage = pathname === "/sub-admin-invitation";
+  const isOfferingGame = pathname === "/play";
   const hideFooterOnMobile =
     pathname === "/shop" ||
     pathname === "/classes" ||
@@ -34,6 +34,7 @@ export default function Layout() {
     pathname === "/profile" ||
     pathname === "/support" ||
     pathname === "/cart" ||
+    pathname === "/play" ||
     pathname.startsWith("/products/");
   useEffect(() => {
     if (hash !== "#story") return;
@@ -47,7 +48,7 @@ export default function Layout() {
   const isAdmin = user?.role === "admin";
   return (
     <>
-      {!isAuthPage && !isInvitationPage && (
+      {!isAuthPage && !isInvitationPage && !isOfferingGame && (
         <header className="site-header">
           <Link to="/" className="brand" onClick={closeMenu}>
             <span className="brand-mark">
@@ -70,6 +71,11 @@ export default function Layout() {
             <NavLink to="/" onClick={closeMenu}>
               <House size={16} /> Home
             </NavLink>
+            {user?.role === "customer" && (
+              <NavLink to="/play" onClick={closeMenu}>
+                <Play size={16} /> Play
+              </NavLink>
+            )}
             {isSubAdmin ? (
               <>
                 <NavLink to="/admin" onClick={closeMenu}>
@@ -163,12 +169,10 @@ export default function Layout() {
           key={isAuthPage ? "auth-pages" : pathname}
           className="page-transition"
         >
-          <Suspense fallback={<RouteLoading />}>
-            <Outlet />
-          </Suspense>
+          <Outlet />
         </div>
       </main>
-      {!isAuthPage && !isInvitationPage && (
+      {!isAuthPage && !isInvitationPage && !isOfferingGame && (
         <footer
           className={`footer${hideFooterOnMobile ? " mobile-hidden-footer" : ""}`}
         >

@@ -232,6 +232,16 @@ export default function AdminServices() {
         <AdminConfirmDialog
           title={`Delete "${serviceToDelete.title}"?`}
           description="This appointment and its available times will be permanently deleted. This action cannot be undone."
+          confirmLabel="Delete permanently"
+          eyebrow="APPOINTMENT DELETION"
+          icon={<Trash2 size={23} />}
+          overlayClassName="class-exit-overlay confirm-overlay"
+          dialogClassName="class-exit-dialog confirm-dialog"
+          actionsClassName="class-exit-actions"
+          cancelLabel="Keep appointment"
+          cancelClassName="btn class-flow-button class-flow-button--green"
+          confirmClassName="btn class-flow-button class-flow-button--danger"
+          role="alertdialog"
           busy={deletingService === serviceToDelete._id}
           onCancel={() => setServiceToDelete(null)}
           onConfirm={() => removeService(serviceToDelete)}

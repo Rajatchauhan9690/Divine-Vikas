@@ -188,6 +188,254 @@ test('admins can create, edit, deactivate, and delete coupons', async () => {
     .delete(`/api/admin/coupons/${created.body.coupon._id}`)
     .set('Authorization', `Bearer ${administrator.accessToken}`)
     .expect(200);
+  const freeDelivery = await request(app)
+    .post('/api/admin/coupons')
+    .set('Authorization', `Bearer ${administrator.accessToken}`)
+    .send({
+      ...couponInput,
+      code: 'SHIPFREE',
+      discountType: 'shipping',
+      value: 100,
+      maxDiscountAmount: null,
+    })
+    .expect(201);
+  assert.equal(freeDelivery.body.coupon.discountType, 'shipping');
+});
+
+test('offering game coupons apply to authenticated product checkout', async () => {
+  const customer = await registerUser('offering-game-coupon@example.com');
+  const product = await Product.create({
+    name: 'Offering Game Checkout Product',
+    price: 250,
+    stock: 3,
+    shippingWeightKg: 0.35,
+  });
+  const address = {
+    fullName: 'Test User',
+    phone: '9876543210',
+    line1: 'Test Road',
+    city: 'Pune',
+    state: 'Maharashtra',
+    postalCode: '411001',
+  };
+  const env = {
+    CASHFREE_CLIENT_ID: process.env.CASHFREE_CLIENT_ID,
+    CASHFREE_CLIENT_SECRET: process.env.CASHFREE_CLIENT_SECRET,
+    SHIPROCKET_PICKUP_POSTCODE: process.env.SHIPROCKET_PICKUP_POSTCODE,
+    SHIPROCKET_EMAIL: process.env.SHIPROCKET_EMAIL,
+    SHIPROCKET_PASSWORD: process.env.SHIPROCKET_PASSWORD,
+  };
+  const originalFetch = globalThis.fetch;
+  let cashfreeCreateAmount;
+  process.env.CASHFREE_CLIENT_ID = 'test-client-id';
+  process.env.CASHFREE_CLIENT_SECRET = 'test-cashfree-secret';
+  process.env.SHIPROCKET_PICKUP_POSTCODE = '411001';
+  process.env.SHIPROCKET_EMAIL = 'offering-game@example.test';
+  process.env.SHIPROCKET_PASSWORD = 'test-shiprocket-password';
+  globalThis.fetch = async (url, options) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith('/auth/login'))
+      return Response.json({ token: 'test-offering-game-shiprocket-token' });
+    if (requestUrl.includes('/courier/serviceability/'))
+      return Response.json({
+        data: {
+          available_courier_companies: [
+            {
+              courier_company_id: 8,
+              courier_name: 'Test Courier',
+              rate: 50,
+              estimated_delivery_days: '2',
+            },
+          ],
+        },
+      });
+    const body = JSON.parse(options.body);
+    cashfreeCreateAmount = body.order_amount;
+    return Response.json({
+      order_id: body.order_id,
+      payment_session_id: 'offering-game-payment-session',
+    });
+  };
+
+  try {
+    await request(app)
+      .post('/api/orders/coupons/game-reward')
+      .expect(401);
+    await Coupon.create({
+      code: 'PREVIOUSGAME',
+      description: 'Previously redeemed game reward',
+      discountType: 'percent',
+      value: 5,
+      usageLimit: 1,
+      redeemedCount: 1,
+      source: 'offering-game',
+      issuedTo: customer.user.id,
+    });
+    const issued = await request(app)
+      .post('/api/orders/coupons/game-reward')
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .send({ claimId: '11111111-1111-4111-8111-111111111111' })
+      .expect(201);
+    const reward = issued.body.coupon;
+    assert.equal(reward.discountType, 'percent');
+    assert.equal(reward.value, 20);
+    assert.match(reward.code, /^DV-20-/);
+    assert.equal(
+      (await Coupon.findOne({ code: 'PREVIOUSGAME' })).source,
+      'offering-game-archived',
+    );
+    const coupon = await Coupon.findOne({ code: reward.code });
+    assert.equal(coupon.source, 'offering-game');
+    assert.equal(coupon.offeringGameRewardTier, 'large');
+    assert.equal(String(coupon.issuedTo), customer.user.id);
+    assert.equal(coupon.usageLimit, 1);
+
+    const repeated = await request(app)
+      .post('/api/orders/coupons/game-reward')
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .send({ claimId: '11111111-1111-4111-8111-111111111111' })
+      .expect(200);
+    assert.equal(repeated.body.coupon.code, reward.code);
+    const otherCustomer = await registerUser('another-offering-game-customer@example.com');
+    await request(app)
+      .post('/api/orders/coupons/validate')
+      .set({ Authorization: `Bearer ${otherCustomer.accessToken}` })
+      .send({
+        code: reward.code,
+        items: [{ product: product._id.toString(), quantity: 1 }],
+        shippingCost: 50,
+      })
+      .expect(400);
+
+    const gameDiscount = 250 * reward.value / 100;
+    const validation = await request(app)
+      .post('/api/orders/coupons/validate')
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .send({
+        code: reward.code,
+        items: [{ product: product._id.toString(), quantity: 1 }],
+        shippingCost: 50,
+      })
+      .expect(200);
+    assert.equal(validation.body.coupon.discountAmount, gameDiscount);
+    const checkout = await request(app)
+      .post('/api/orders')
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .send({
+        items: [{ product: product._id.toString(), quantity: 1 }],
+        shippingAddress: address,
+        paymentMethod: 'cashfree',
+        shippingCourierId: 8,
+        shippingRate: 50,
+        couponCode: reward.code,
+      })
+      .expect(201);
+    assert.equal(cashfreeCreateAmount, 300 - gameDiscount);
+    const attempt = await ProductPaymentAttempt.findById(checkout.body.attemptId);
+    assert.equal(attempt.discountAmount, gameDiscount);
+    assert.equal(attempt.coupon.code, reward.code);
+
+    const repeatIssue = await request(app)
+      .post('/api/orders/coupons/game-reward')
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .send({ claimId: '22222222-2222-4222-8222-222222222222' })
+      .expect(201);
+    const repeatReward = repeatIssue.body.coupon;
+    assert.equal(repeatReward.discountType, 'percent');
+    assert.ok(repeatReward.value >= 5 && repeatReward.value <= 9);
+    const repeatCoupon = await Coupon.findOne({ code: repeatReward.code });
+    assert.equal(repeatCoupon.offeringGameRewardTier, 'repeat');
+    assert.equal(repeatCoupon.source, 'offering-game');
+    assert.equal(
+      (await Coupon.findOne({ code: reward.code })).source,
+      'offering-game-archived',
+    );
+    const repeatDiscount = 250 * repeatReward.value / 100;
+    const repeatCheckout = await request(app)
+      .post('/api/orders')
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .send({
+        items: [{ product: product._id.toString(), quantity: 1 }],
+        shippingAddress: address,
+        paymentMethod: 'cashfree',
+        shippingCourierId: 8,
+        shippingRate: 50,
+        couponCode: repeatReward.code,
+      })
+      .expect(201);
+    assert.equal(cashfreeCreateAmount, 300 - repeatDiscount);
+    const repeatAttempt = await ProductPaymentAttempt.findById(
+      repeatCheckout.body.attemptId,
+    );
+    assert.equal(repeatAttempt.discountAmount, repeatDiscount);
+    const repeatedLowReward = await request(app)
+      .post('/api/orders/coupons/game-reward')
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .send({ claimId: '22222222-2222-4222-8222-222222222222' })
+      .expect(200);
+    assert.equal(repeatedLowReward.body.coupon.code, repeatReward.code);
+    const thirdPlay = await request(app)
+      .post('/api/orders/coupons/game-reward')
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .send({ claimId: '33333333-3333-4333-8333-333333333333' })
+      .expect(201);
+    assert.ok(
+      thirdPlay.body.coupon.value >= 5 && thirdPlay.body.coupon.value <= 9,
+    );
+    const rewardUser = await User.findById(customer.user.id).select(
+      '+offeringGameHighRewardClaimed',
+    );
+    assert.equal(rewardUser.offeringGameHighRewardClaimed, true);
+
+    await Coupon.create({
+      code: 'FREESHIP',
+      description: 'Free delivery test',
+      discountType: 'shipping',
+      value: 100,
+      usageLimit: 1,
+    });
+    const freeDelivery = await request(app)
+      .post('/api/orders')
+      .set({ Authorization: `Bearer ${customer.accessToken}` })
+      .send({
+        items: [{ product: product._id.toString(), quantity: 1 }],
+        shippingAddress: address,
+        paymentMethod: 'cashfree',
+        shippingCourierId: 8,
+        shippingRate: 50,
+        couponCode: 'FREESHIP',
+      })
+      .expect(201);
+    assert.equal(cashfreeCreateAmount, 250);
+    const freeDeliveryAttempt = await ProductPaymentAttempt.findById(
+      freeDelivery.body.attemptId,
+    );
+    assert.equal(freeDeliveryAttempt.discountAmount, 50);
+    assert.equal(freeDeliveryAttempt.total, 250);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('offering game rewards are restricted to customers', async () => {
+  for (const role of ['admin', 'sub_admin']) {
+    const account = await registerUser(`offering-game-${role}@example.com`);
+    await User.updateOne(
+      { _id: account.user.id },
+      { $set: { role } },
+    );
+    await request(app)
+      .post('/api/orders/coupons/game-reward')
+      .set({ Authorization: `Bearer ${account.accessToken}` })
+      .send({ claimId: role === 'admin'
+        ? '44444444-4444-4444-8444-444444444444'
+        : '55555555-5555-4555-8555-555555555555' })
+      .expect(403);
+  }
 });
 
 test('cookie-backed authentication rejects unsafe requests without a valid CSRF token', async () => {
@@ -2642,6 +2890,7 @@ test('Cashfree product checkout creates an order only after successful payment',
       (await ProductPaymentAttempt.findById(paidAttempt._id)).status,
       'order_created',
     );
+
     availableCouriers = [];
     const unavailableQuote = await request(app)
       .post('/api/orders/shipping-quotes')

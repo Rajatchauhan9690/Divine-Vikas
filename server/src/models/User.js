@@ -35,6 +35,11 @@ const userSchema = new mongoose.Schema(
       },
     ],
     active: { type: Boolean, default: true },
+    offeringGameHighRewardClaimed: {
+      type: Boolean,
+      default: false,
+      select: false,
+    },
     subscription: {
       planKey: { type: String, default: "" },
       planName: { type: String, default: "" },
