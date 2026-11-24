@@ -564,8 +564,6 @@ textarea {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center top;
-  transform-origin: center top;
   transition: transform 0.5s;
 }
 .product-card:hover .product-image img {
