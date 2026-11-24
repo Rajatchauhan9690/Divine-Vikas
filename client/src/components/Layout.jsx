@@ -71,7 +71,7 @@ export default function Layout() {
             <NavLink to="/" onClick={closeMenu}>
               <House size={16} /> Home
             </NavLink>
-            {user?.role === "customer" && (
+            {(!user || user.role === "customer") && (
               <NavLink to="/play" onClick={closeMenu}>
                 <Play size={16} /> Play
               </NavLink>
