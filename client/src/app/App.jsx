@@ -1,25 +1,60 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import Layout from "../components/Layout";
 import AuthLayout from "../components/AuthLayout";
 import Seo from "../components/Seo";
 import RouteLoading from "../components/RouteLoading";
 import Home from "../pages/Home";
-const Shop = lazy(() => import("../pages/Shop"));
-const Product = lazy(() => import("../pages/Product"));
-const Auth = lazy(() => import("../pages/Auth"));
-const Cart = lazy(() => import("../pages/Cart"));
-const Admin = lazy(() => import("../pages/Admin"));
-const ClassBookings = lazy(() => import("../pages/ClassBookings"));
-const ServiceBookings = lazy(() => import("../pages/ServiceBookings"));
-const SubAdminInvitation = lazy(() => import("../pages/SubAdminInvitation"));
-const Profile = lazy(() => import("../pages/Profile"));
-const Orders = lazy(() => import("../pages/Orders"));
-const Support = lazy(() => import("../pages/Support"));
-const PasswordReset = lazy(() => import("../pages/PasswordReset"));
-const OfferingGame = lazy(() =>
-  import("../features/offering-game/OfferingGame"),
-);
+const routeLoaders = {
+  play: () => import("../features/offering-game/OfferingGame"),
+  shop: () => import("../pages/Shop"),
+  product: () => import("../pages/Product"),
+  auth: () => import("../pages/Auth"),
+  cart: () => import("../pages/Cart"),
+  admin: () => import("../pages/Admin"),
+  classes: () => import("../pages/ClassBookings"),
+  services: () => import("../pages/ServiceBookings"),
+  "sub-admin-invitation": () => import("../pages/SubAdminInvitation"),
+  profile: () => import("../pages/Profile"),
+  orders: () => import("../pages/Orders"),
+  support: () => import("../pages/Support"),
+  "password-reset": () => import("../pages/PasswordReset"),
+};
+const prefetchedRoutes = new Map();
+
+function getRouteKey(pathname) {
+  if (pathname.startsWith("/products/")) return "product";
+  if (pathname === "/orders" || pathname.startsWith("/orders/")) return "orders";
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) return "admin";
+  if (pathname === "/login" || pathname === "/register") return "auth";
+  return pathname.replace(/^\/+|\/+$/g, "");
+}
+
+function prefetchRoute(pathname) {
+  const routeKey = getRouteKey(pathname);
+  const loadRoute = routeLoaders[routeKey];
+  if (!loadRoute || prefetchedRoutes.has(routeKey)) return;
+
+  const loading = loadRoute().catch((error) => {
+    prefetchedRoutes.delete(routeKey);
+    console.error(`Failed to prefetch the "${routeKey}" route.`, error);
+  });
+  prefetchedRoutes.set(routeKey, loading);
+}
+
+const Shop = lazy(routeLoaders.shop);
+const Product = lazy(routeLoaders.product);
+const Auth = lazy(routeLoaders.auth);
+const Cart = lazy(routeLoaders.cart);
+const Admin = lazy(routeLoaders.admin);
+const ClassBookings = lazy(routeLoaders.classes);
+const ServiceBookings = lazy(routeLoaders.services);
+const SubAdminInvitation = lazy(routeLoaders["sub-admin-invitation"]);
+const Profile = lazy(routeLoaders.profile);
+const Orders = lazy(routeLoaders.orders);
+const Support = lazy(routeLoaders.support);
+const PasswordReset = lazy(routeLoaders["password-reset"]);
+const OfferingGame = lazy(routeLoaders.play);
 
 function withRouteLoading(element) {
   return (
@@ -28,6 +63,25 @@ function withRouteLoading(element) {
 }
 
 export default function App() {
+  useEffect(() => {
+    const prefetchLinkRoute = (event) => {
+      const link = event.target.closest("a[href]");
+      if (!link || link.target || link.hasAttribute("download")) return;
+
+      const destination = new URL(link.href, window.location.href);
+      if (destination.origin === window.location.origin) {
+        prefetchRoute(destination.pathname);
+      }
+    };
+
+    document.addEventListener("mouseover", prefetchLinkRoute);
+    document.addEventListener("focusin", prefetchLinkRoute);
+    return () => {
+      document.removeEventListener("mouseover", prefetchLinkRoute);
+      document.removeEventListener("focusin", prefetchLinkRoute);
+    };
+  }, []);
+
   return (
     <Routes>
       <Route element={<Layout />}>
