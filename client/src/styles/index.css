@@ -647,11 +647,9 @@ textarea {
   padding: 15px;
 }
 .product-info h3 {
-  font:
-    21px "Playfair Display",
-    serif;
+  font-size: 18px;
   line-height: 1.25;
-  margin: 0 0 6px;
+  margin: 0 0 5px;
 }
 .product-info p {
   font-size: 15px;
@@ -664,10 +662,10 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 16px 0;
+  margin: 5px 0;
 }
 .product-bottom strong {
-  font-size: 16px;
+  font-size: 18px;
 }
 .product-price-row {
   display: flex;
@@ -9284,10 +9282,8 @@ body.cashfree-checkout-active .footer {
   height: 100vh;
   height: 100dvh;
   min-height: 0;
-  padding:
-    max(76px, calc(env(safe-area-inset-top) + 60px))
-    clamp(12px, 4vw, 24px)
-    max(20px, env(safe-area-inset-bottom));
+  padding: max(76px, calc(env(safe-area-inset-top) + 60px))
+    clamp(12px, 4vw, 24px) max(20px, env(safe-area-inset-bottom));
   overflow-x: hidden;
   overflow-y: auto;
   background:
@@ -9653,7 +9649,12 @@ body.cashfree-checkout-active .footer {
   aspect-ratio: 1;
   transform: translateX(-50%);
   border-radius: 50%;
-  background: radial-gradient(circle, #f8edc480, #d7be8135 45%, transparent 72%);
+  background: radial-gradient(
+    circle,
+    #f8edc480,
+    #d7be8135 45%,
+    transparent 72%
+  );
   content: "";
   animation: offering-game-aura 1.2s ease-in-out infinite alternate;
   pointer-events: none;
@@ -9947,9 +9948,7 @@ body.cashfree-checkout-active .footer {
 
 @media (max-width: 760px) {
   .offering-game {
-    padding:
-      max(68px, calc(env(safe-area-inset-top) + 56px))
-      14px
+    padding: max(68px, calc(env(safe-area-inset-top) + 56px)) 14px
       max(18px, env(safe-area-inset-bottom));
   }
 
@@ -10055,7 +10054,9 @@ body.cashfree-checkout-active .footer {
     height: 66px;
   }
 
-  .offering-game__offer .offering-game__actions--secondary .offering-game__button {
+  .offering-game__offer
+    .offering-game__actions--secondary
+    .offering-game__button {
     flex-basis: 130px;
   }
 }
