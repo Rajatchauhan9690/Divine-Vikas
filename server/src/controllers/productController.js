@@ -38,6 +38,13 @@ function parseShippingDimension(value) {
     : undefined;
 }
 
+function parseMrp(value) {
+  if (value === undefined || value === null || String(value).trim() === "")
+    return null;
+  const mrp = Number(value);
+  return Number.isFinite(mrp) && mrp >= 1 ? mrp : undefined;
+}
+
 function parseShippingDimensions(length, breadth, height) {
   const dimensions = [
     parseShippingDimension(length),
@@ -102,6 +109,7 @@ export const createProduct = asyncHandler(async (req, res) => {
   const {
     name,
     price,
+    mrp: rawMrp,
     category,
     shortDescription,
     description,
@@ -114,6 +122,7 @@ export const createProduct = asyncHandler(async (req, res) => {
     returnWindowDays: rawReturnWindowDays,
   } = req.body;
   const parsedPrice = Number(price);
+  const mrp = parseMrp(rawMrp);
   const parsedStock = Number(stock);
   const shippingWeightKg = parseShippingWeight(rawShippingWeightKg);
   const shippingDimensions = parseShippingDimensions(
@@ -131,6 +140,8 @@ export const createProduct = asyncHandler(async (req, res) => {
     name.trim().length > 120 ||
     !Number.isFinite(parsedPrice) ||
     parsedPrice < 1 ||
+    mrp === undefined ||
+    (mrp !== null && mrp <= parsedPrice) ||
     !categories.includes(category) ||
     typeof shortDescription !== "string" ||
     !shortDescription.trim() ||
@@ -172,6 +183,7 @@ export const createProduct = asyncHandler(async (req, res) => {
     product = await Product.create({
       name: name.trim(),
       price: parsedPrice,
+      mrp,
       category,
       shortDescription: shortDescription.trim(),
       description: description.trim(),
@@ -207,6 +219,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
   const {
     name,
     price,
+    mrp: rawMrp,
     category,
     shortDescription,
     description,
@@ -219,6 +232,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
     returnWindowDays: rawReturnWindowDays,
   } = req.body;
   const parsedPrice = Number(price);
+  const mrp = rawMrp === undefined ? undefined : parseMrp(rawMrp);
   const parsedStock = Number(stock);
   const shippingWeightKg =
     rawShippingWeightKg === undefined
@@ -246,6 +260,8 @@ export const updateProduct = asyncHandler(async (req, res) => {
     name.trim().length > 120 ||
     !Number.isFinite(parsedPrice) ||
     parsedPrice < 1 ||
+    (rawMrp !== undefined && mrp === undefined) ||
+    (mrp !== undefined && mrp !== null && mrp <= parsedPrice) ||
     !categories.includes(category) ||
     typeof shortDescription !== "string" ||
     !shortDescription.trim() ||
@@ -282,6 +298,13 @@ export const updateProduct = asyncHandler(async (req, res) => {
   });
   if (!product)
     throw new AppError("Product not found", 404, "PRODUCT_NOT_FOUND");
+  const nextMrp = mrp === undefined ? product.mrp : mrp;
+  if (nextMrp != null && nextMrp <= parsedPrice)
+    throw new AppError(
+      "MRP must be greater than the selling price",
+      400,
+      "INVALID_PRODUCT_PRICE",
+    );
   const nextReturnWindowDays =
     rawReturnWindowDays === undefined
       ? product.returnWindowDays
@@ -310,6 +333,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
   try {
     product.name = name.trim();
     product.price = parsedPrice;
+    if (mrp !== undefined) product.mrp = mrp;
     product.category = category;
     product.shortDescription = shortDescription.trim();
     product.description = description.trim();

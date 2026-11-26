@@ -1531,6 +1531,7 @@ test('admin can edit product details without replacing its image', async () => {
     })
     .field('name', 'Updated Product')
     .field('price', '250')
+    .field('mrp', '300')
     .field('category', 'Mood uplifters')
     .field('shortDescription', 'Updated short description')
     .field('description', 'Updated description')
@@ -1541,6 +1542,7 @@ test('admin can edit product details without replacing its image', async () => {
     .field('returnWindowDays', '3')
     .expect(200);
   assert.equal(response.body.product.name, 'Updated Product');
+  assert.equal(response.body.product.mrp, 300);
   assert.equal(response.body.product.stock, 12);
   assert.equal(response.body.product.returnable, true);
   assert.equal(response.body.product.returnWindowDays, 3);
@@ -1548,6 +1550,23 @@ test('admin can edit product details without replacing its image', async () => {
   assert.equal(response.body.product.shippingBreadthCm, 8);
   assert.equal(response.body.product.shippingHeightCm, 4);
   assert.equal(response.body.product.image, 'https://example.com/product.png');
+
+  await request(app)
+    .put(`/api/admin/products/${product._id}`)
+    .set({
+      Authorization: `Bearer ${administrator.accessToken}`,
+      Origin: 'http://localhost:5173',
+    })
+    .field('name', 'Updated Product')
+    .field('price', '250')
+    .field('mrp', '200')
+    .field('category', 'Mood uplifters')
+    .field('shortDescription', 'Updated short description')
+    .field('description', 'Updated description')
+    .field('stock', '12')
+    .field('returnWindowDays', '3')
+    .expect(400);
+  assert.equal((await Product.findById(product._id)).mrp, 300);
 
   await request(app)
     .put(`/api/admin/products/${product._id}`)

@@ -35,6 +35,7 @@ import Seo from "../components/Seo";
 const blank = {
   name: "",
   price: "",
+  mrp: "",
   category: "",
   shortDescription: "",
   description: "",
@@ -57,6 +58,7 @@ const maxProductImageSize = 5 * 1024 * 1024;
 function validateProductForm(values, requireImage = true) {
   const errors = {};
   const price = Number(values.price);
+  const mrpValue = String(values.mrp ?? "").trim();
   const stock = Number(values.stock);
   const shippingWeightKg = String(values.shippingWeightKg ?? "").trim();
   const shippingDimensions = [
@@ -73,6 +75,14 @@ function validateProductForm(values, requireImage = true) {
 
   if (!values.price || !Number.isFinite(price) || price < 1)
     errors.price = "Enter a valid price of at least ₹1.";
+
+  if (
+    mrpValue &&
+    (!Number.isFinite(Number(mrpValue)) ||
+      Number(mrpValue) < 1 ||
+      Number(mrpValue) <= price)
+  )
+    errors.mrp = "MRP must be greater than the selling price.";
 
   if (!["Devoted to god", "Mood uplifters", "Other"].includes(values.category))
     errors.category = "Choose a product category.";
@@ -339,6 +349,7 @@ export default function Admin() {
     setForm({
       name: product.name || "",
       price: String(product.price ?? ""),
+      mrp: product.mrp == null ? "" : String(product.mrp),
       category: product.category || "",
       shortDescription: product.shortDescription || "",
       description: product.description || "",
@@ -640,7 +651,7 @@ export default function Admin() {
                 )}
               </label>
               <label>
-                Price (₹)
+                Selling price (₹)
                 <input
                   required
                   type="number"
@@ -662,6 +673,33 @@ export default function Admin() {
                     {productErrors.price}
                   </small>
                 )}
+              </label>
+              <label>
+                MRP (₹, optional)
+                <input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  aria-invalid={Boolean(productErrors.mrp)}
+                  aria-describedby={
+                    productErrors.mrp ? "product-mrp-help" : "product-mrp-note"
+                  }
+                  value={form.mrp}
+                  onChange={(e) => updateProductField("mrp", e.target.value)}
+                />
+                <small
+                  id={
+                    productErrors.mrp ? "product-mrp-help" : "product-mrp-note"
+                  }
+                  className={
+                    productErrors.mrp ? "admin-field-error" : "admin-field-help"
+                  }
+                  aria-live="polite"
+                >
+                  {productValidationAttempted && productErrors.mrp
+                    ? productErrors.mrp
+                    : "Enter the genuine MRP. Leave blank when there is no offer."}
+                </small>
               </label>
               <label>
                 Category

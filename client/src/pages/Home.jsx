@@ -67,11 +67,6 @@ export default function Home() {
             <Link className="btn btn-dark" to="/shop">
               Explore fragrances <ArrowUpRight size={17} />
             </Link>
-            {!isAdmin && !isSubAdmin && (
-              <Link className="btn btn-outline" to="/play">
-                <Play size={16} /> Play the game
-              </Link>
-            )}
             <a className="text-link" href="#story">
               Our philosophy
             </a>
@@ -86,6 +81,11 @@ export default function Home() {
               <b>Made for mindful moments</b>
               <small>Everyday luxury, rooted in devotion</small>
             </span>
+            {!isAdmin && !isSubAdmin && (
+              <Link className="btn btn-dark hero-game-link" to="/play">
+                <Play size={16} /> Play the game
+              </Link>
+            )}
           </div>
         </div>
         <div className="hero-art">

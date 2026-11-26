@@ -2,6 +2,11 @@ import { memo } from "react";
 import { Star } from "lucide-react";
 import { Link } from "react-router-dom";
 function ProductCard({ product }) {
+  const discountPercentage =
+    product.mrp > product.price
+      ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
+      : 0;
+
   return (
     <article className="product-card">
       <Link to={`/products/${product._id}`} className="product-image">
@@ -21,7 +26,15 @@ function ProductCard({ product }) {
           </p>
         </div>
         <div className="product-bottom">
-          <strong>₹{product.price}</strong>
+          <div className="product-price-row">
+            <strong>₹{product.price}</strong>
+            {discountPercentage > 0 && (
+              <>
+                <s>₹{product.mrp}</s>
+                <span>{discountPercentage}% OFF</span>
+              </>
+            )}
+          </div>
           <span className="rating">
             <Star size={13} fill="currentColor" /> {product.rating || "4.8"}
           </span>
