@@ -5,6 +5,7 @@ import AuthLayout from "../components/AuthLayout";
 import Seo from "../components/Seo";
 import RouteLoading from "../components/RouteLoading";
 import Home from "../pages/Home";
+import { api } from "../services/api";
 const routeLoaders = {
   play: () => import("../features/offering-game/OfferingGame"),
   shop: () => import("../pages/Shop"),
@@ -21,6 +22,7 @@ const routeLoaders = {
   "password-reset": () => import("../pages/PasswordReset"),
 };
 const prefetchedRoutes = new Map();
+const prefetchedData = new Map();
 
 function getRouteKey(pathname) {
   if (pathname.startsWith("/products/")) return "product";
@@ -41,6 +43,34 @@ function prefetchRoute(pathname) {
   });
   prefetchedRoutes.set(routeKey, loading);
 }
+
+function prefetchData(key, request) {
+  if (prefetchedData.has(key)) return;
+
+  const loading = request()
+    .catch((error) => {
+      console.error(`Failed to prefetch "${key}".`, error);
+    })
+    .finally(() => {
+      prefetchedData.delete(key);
+    });
+  prefetchedData.set(key, loading);
+}
+
+const routeDataPrefetchers = {
+  shop: () =>
+    prefetchData("shop products", () =>
+      api.get("/products", { params: { search: "", category: "" } }),
+    ),
+  product: (pathname) => {
+    const productId = pathname.slice("/products/".length);
+    if (!productId) return;
+
+    prefetchData(`product ${productId}`, () =>
+      api.get(`/products/${productId}`),
+    );
+  },
+};
 
 const Shop = lazy(routeLoaders.shop);
 const Product = lazy(routeLoaders.product);
@@ -71,13 +101,20 @@ export default function App() {
       const destination = new URL(link.href, window.location.href);
       if (destination.origin === window.location.origin) {
         prefetchRoute(destination.pathname);
+        routeDataPrefetchers[getRouteKey(destination.pathname)]?.(
+          destination.pathname,
+        );
       }
     };
 
     document.addEventListener("mouseover", prefetchLinkRoute);
+    document.addEventListener("touchstart", prefetchLinkRoute, {
+      passive: true,
+    });
     document.addEventListener("focusin", prefetchLinkRoute);
     return () => {
       document.removeEventListener("mouseover", prefetchLinkRoute);
+      document.removeEventListener("touchstart", prefetchLinkRoute);
       document.removeEventListener("focusin", prefetchLinkRoute);
     };
   }, []);

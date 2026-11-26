@@ -392,6 +392,13 @@ textarea {
   gap: 14px;
   margin-top: 58px;
 }
+.hero-game-link {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.hero-note > span:not(.avatar-stack) {
+  min-width: 0;
+}
 .avatar-stack {
   display: flex;
 }
@@ -661,6 +668,23 @@ textarea {
 }
 .product-bottom strong {
   font-size: 16px;
+}
+.product-price-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+}
+.product-price-row s,
+.detail-pricing s {
+  color: #83877e;
+  font-size: 13px;
+}
+.product-price-row > span,
+.detail-pricing > span {
+  color: #e85d2a;
+  font-size: 12px;
+  font-weight: 700;
 }
 .rating {
   display: flex;
@@ -1725,9 +1749,22 @@ textarea {
   line-height: 1.2;
 }
 .detail-price {
-  display: block;
+  display: inline;
   font-size: 25px;
+  margin: 0;
+}
+.detail-pricing {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   margin: 22px 0;
+}
+.detail-pricing s {
+  font-size: 16px;
+}
+.detail-pricing > span {
+  font-size: 14px;
 }
 .detail-copy > p {
   font-size: 16px;
@@ -3074,6 +3111,20 @@ textarea {
   .hero-note {
     margin-top: 27px;
     gap: 12px;
+  }
+  .hero-game-link {
+    gap: 7px;
+    padding: 0 12px;
+    font-size: 14px;
+  }
+  .hero-note .avatar-stack {
+    display: none;
+  }
+  .hero-note b {
+    font-size: 14px;
+  }
+  .hero-note small {
+    font-size: 12px;
   }
   .hero-art {
     height: clamp(280px, 88vw, 350px);

@@ -34,6 +34,10 @@ export default function Product() {
     [error, setError] = useState(""),
     [added, setAdded] = useState(false);
   const p = productState.id === id ? productState.product : null;
+  const discountPercentage =
+    p?.mrp > p?.price
+      ? Math.round(((p.mrp - p.price) / p.mrp) * 100)
+      : 0;
   const { add } = useCart();
   const { user, ready } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -162,7 +166,15 @@ export default function Product() {
         <div className="detail-rating">
           ★★★★★ <span>{p.rating || "4.8"} / 5</span>
         </div>
-        <strong className="detail-price">₹{p.price}</strong>
+        <div className="detail-pricing">
+          <strong className="detail-price">₹{p.price}</strong>
+          {discountPercentage > 0 && (
+            <>
+              <s>₹{p.mrp}</s>
+              <span>{discountPercentage}% OFF</span>
+            </>
+          )}
+        </div>
         <p>
           {p.description ||
             p.shortDescription ||

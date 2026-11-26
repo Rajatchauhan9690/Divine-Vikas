@@ -4,6 +4,7 @@ const schema = new mongoose.Schema(
     name: { type: String, required: true, trim: true, maxLength: 120 },
     slug: { type: String, unique: true, index: true },
     price: { type: Number, required: true, min: 1 },
+    mrp: { type: Number, min: 1, default: null },
     category: {
       type: String,
       enum: ["Devoted to god", "Mood uplifters", "Other"],
