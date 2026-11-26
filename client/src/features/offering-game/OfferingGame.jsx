@@ -379,9 +379,7 @@ export default function OfferingGame() {
   }
 
   if (!ready) return <div className="loading-state">Loading…</div>;
-  if (!user)
-    return <Navigate to="/login" replace state={{ from: "/play" }} />;
-  if (user.role !== "customer")
+  if (user && user.role !== "customer")
     return (
       <Navigate
         to={user.role === "admin" ? "/admin" : "/admin/services"}
@@ -460,7 +458,9 @@ export default function OfferingGame() {
           <p className="offering-game__brand">DIVINE VIKAS</p>
           <h1>A Moment of Devotion</h1>
           <p className="offering-game__description">
-            Offer your prayers to the divine and receive a special blessing.
+            Offer your prayers to the divine and receive a special blessing. You
+            can play without signing in; sign in at the end to claim your
+            coupon.
           </p>
           <div className="offering-game__diyas" aria-hidden="true">
             <span />
@@ -714,10 +714,7 @@ export default function OfferingGame() {
             </Link>
           )}
           {!reward && !rewardLoading && user && (
-            <button
-              className="offering-game__button"
-              onClick={receiveBlessing}
-            >
+            <button className="offering-game__button" onClick={receiveBlessing}>
               Try again
             </button>
           )}
